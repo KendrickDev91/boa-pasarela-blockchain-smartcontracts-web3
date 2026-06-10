@@ -1,0 +1,32 @@
+# Node.js y dependencias
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Entornos y variables privadas (¡CRÍTICO no subir esto!)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build y distribución de React (Vite)
+frontend/dist/
+frontend/dist-ssr/
+frontend/.eslintcache
+
+# Hardhat (Smart Contracts)
+contracts/cache/
+contracts/artifacts/
+contracts/typechain/
+contracts/typechain-types/
+contracts/coverage/
+contracts/coverage.json
+
+# Archivos de SO
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log

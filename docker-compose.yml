@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  postgres_db:
+    image: postgres:18.4
+    container_name: bova_postgres_container
+    environment:
+      POSTGRES_USER: keni_admin
+      POSTGRES_PASSWORD: admin_password_boa
+      POSTGRES_DB: bova_payments_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - bova_network
+
+networks:
+  bova_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
