@@ -1,11 +1,17 @@
-import PaymentGateway from './components/PaymentGateway'
+import { Routes, Route, Navigate } from 'react-router-dom';
+import BookingApp from './booking/BookingApp.jsx';
+import AdminApp from './admin/AdminApp.jsx';
+import PaymentGateway from './components/PaymentGateway';
+import MockPolygonScan from './explorer/MockPolygonScan';
 
-function App() {
+export default function App() {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <PaymentGateway />
-    </div>
-  )
+    <Routes>
+      <Route path="/" element={<BookingApp />} />
+      <Route path="/admin" element={<AdminApp />} />
+      <Route path="/pago-directo" element={<PaymentGateway />} />
+      <Route path="/explorer/tx/:hash" element={<MockPolygonScan />} />
+      <Route path="*" element={<Navigate to="/" />} />
+    </Routes>
+  );
 }
-
-export default App

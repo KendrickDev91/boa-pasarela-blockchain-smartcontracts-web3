@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ethers } from 'ethers';
 import { QRCodeSVG } from 'qrcode.react';
-import { PlaneTakeoff, Wallet, CheckCircle2, AlertCircle, QrCode } from 'lucide-react';
+import { PlaneTakeoff, Wallet, CheckCircle2, AlertCircle, QrCode, Copy } from 'lucide-react';
 import { BOA_PAYMENTS_ADDRESS, BOA_PAYMENTS_ABI, USDT_TOKEN_ADDRESS, ERC20_ABI } from '../constants/contracts';
 
 const PaymentGateway = () => {
@@ -169,16 +169,58 @@ const PaymentGateway = () => {
             </button>
           </div>
 
-          {/* Sección QR Alternativa */}
+          {/* Sección QR Alternativa (Ticket de Cobro) */}
           {showQR && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200 text-center flex flex-col items-center">
-              <p className="text-sm text-gray-600 mb-3 font-medium">Envía exactamente el monto en USDT (Polygon) a:</p>
-              <div className="bg-white p-3 rounded-xl shadow-sm inline-block border border-gray-100">
-                <QRCodeSVG value={BOA_PAYMENTS_ADDRESS} size={150} level="H" includeMargin={false} />
+            <div className="mt-5 p-5 bg-gradient-to-b from-gray-50 to-white rounded-xl border-2 border-dashed border-gray-300 text-center flex flex-col items-center shadow-inner relative overflow-hidden transition-all duration-300">
+              {/* Decoración superior del ticket */}
+              <div className="absolute top-0 left-0 w-full h-1 bg-boa-accent opacity-50"></div>
+              
+              <h3 className="text-lg font-bold text-gray-800 mb-1">Ticket de Cobro BoA</h3>
+              <p className="text-xs text-gray-500 mb-4 uppercase tracking-widest font-semibold">Depósito Remoto Web3</p>
+
+              <div className="bg-white p-3 rounded-xl shadow-sm inline-block border border-gray-200 mb-5 relative group">
+                <QRCodeSVG value={BOA_PAYMENTS_ADDRESS} size={160} level="H" includeMargin={false} />
               </div>
-              <p className="text-xs text-gray-500 mt-3 break-all bg-gray-200 px-3 py-2 rounded-md font-mono select-all">
-                {BOA_PAYMENTS_ADDRESS}
-              </p>
+
+              <div className="w-full text-left space-y-2 bg-white p-3 rounded-lg border border-gray-200 mb-5 shadow-sm">
+                <div className="flex justify-between items-center text-sm border-b border-gray-100 pb-2">
+                  <span className="text-gray-500 font-medium">Red Requerida:</span>
+                  <span className="font-bold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-md border border-purple-100">Polygon (MATIC)</span>
+                </div>
+                <div className="flex justify-between items-center text-sm border-b border-gray-100 pb-2 pt-1">
+                  <span className="text-gray-500 font-medium">Activo Digital:</span>
+                  <span className="font-bold text-green-700 bg-green-50 px-2.5 py-1 rounded-md border border-green-100">Tether (USDT)</span>
+                </div>
+                <div className="flex justify-between items-center text-sm pt-1">
+                  <span className="text-gray-500 font-medium">Monto a transferir:</span>
+                  <span className="font-bold text-gray-900 text-lg">
+                    ${monto ? parseFloat(monto).toFixed(2) : '0.00'} <span className="text-sm font-semibold text-gray-500">USDT</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="w-full">
+                <p className="text-xs text-gray-500 font-medium mb-1.5 text-left">Dirección del Contrato Inteligente:</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-gray-600 flex-1 break-all bg-gray-50 px-3 py-2.5 rounded-lg border border-gray-200 font-mono select-all text-left shadow-inner">
+                    {BOA_PAYMENTS_ADDRESS}
+                  </p>
+                  <button 
+                    onClick={() => navigator.clipboard.writeText(BOA_PAYMENTS_ADDRESS)}
+                    className="p-2.5 bg-gray-50 hover:bg-boa-accent hover:text-white text-gray-500 rounded-lg border border-gray-200 transition-all duration-200 shadow-sm active:scale-95"
+                    title="Copiar dirección"
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-start gap-2.5 text-left bg-orange-50 p-3.5 rounded-lg border border-orange-200">
+                <AlertCircle size={18} className="text-orange-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-orange-800 leading-relaxed">
+                  <strong>Aviso Técnico:</strong> Debe transferir <span className="underline font-semibold">exactamente</span> el monto indicado a través de la red Polygon. El oráculo del sistema validará automáticamente el estado transaccional del PNR <span className="font-bold bg-orange-100 px-1 rounded">{pnr ? pnr.toUpperCase() : '[NO INGRESADO]'}</span> una vez confirmados los bloques de red.
+                </p>
+              </div>
             </div>
           )}
         </div>

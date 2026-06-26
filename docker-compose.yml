@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   postgres_db:
-    image: postgres:18.4
+    image: postgres:16
     container_name: bova_postgres_container
     environment:
       POSTGRES_USER: keni_admin
