@@ -154,9 +154,16 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
       await provider.send("eth_requestAccounts", []);
       const signer = await provider.getSigner();
       
-      setWalletMsg('1/2 Aprobando USDT...');
       const montoFormateado = ethers.parseUnits(cryptoAmount.toString(), 6);
       const usdtContract = new ethers.Contract(USDT_TOKEN_ADDRESS, ERC20_ABI, signer);
+      
+      // Validación proactiva de saldo para mejor UX (Evita transacciones fallidas)
+      const balance = await usdtContract.balanceOf(signer.address);
+      if (balance < montoFormateado) {
+        throw new Error(`Saldo insuficiente: NO SE COMPLETO LA TRANSACCION`);
+      }
+
+      setWalletMsg('1/2 Aprobando USDT...');
       const txAprobacion = await usdtContract.approve(BOA_PAYMENTS_ADDRESS, montoFormateado);
       await txAprobacion.wait();
       
