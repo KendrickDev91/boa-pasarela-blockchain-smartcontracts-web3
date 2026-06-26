@@ -97,7 +97,7 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
   const [walletMsg, setWalletMsg] = useState('');
   const [error, setError] = useState('');
   const [chain, setChain] = useState(null); // { chainId, contracts, tesoreria, decimals }
-  const [qrMode, setQrMode] = useState('binance'); // 'web3' | 'binance'
+  const [qrMode, setQrMode] = useState('web3'); // 'web3' | 'binance'
   const esRef = useRef(null);
 
   // Info de cadena (token USDT + chainId) para armar el QR EIP-681.
@@ -291,24 +291,14 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
           </div>
 
           {/* Acciones de pago */}
-          <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={pagarMetaMask} disabled={!real || busy || sinMetamask}
-              title={!real ? 'Requiere backend + reserva' : sinMetamask ? 'MetaMask no detectado en este navegador' : 'Conecta MetaMask en la red Polygon'}
-              style={{
-                flex: '1 1 180px', background: real && !busy && !sinMetamask ? '#00306F' : '#9CA3AF', color: '#fff',
-                border: 'none', borderRadius: 6, padding: '11px 12px', fontSize: 13, fontWeight: 700,
+          <div style={{ display: 'flex', gap: 12, marginTop: 24, flexWrap: 'wrap' }}>
+            <button onClick={pagarMetaMask} disabled={!real || busy || sinMetamask} style={{
+                flex: '1 1 180px', background: '#00A95C', color: '#fff',
+                border: 'none', borderRadius: 6, padding: '12px', fontSize: 13, fontWeight: 700,
                 cursor: real && !busy && !sinMetamask ? 'pointer' : 'not-allowed', fontFamily: 'Lato',
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               }}>
               <i className="ri-wallet-3-line"></i> Pagar con MetaMask
-            </button>
-            <button onClick={pagarSimulado} disabled={!real || busy} style={{
-              flex: '1 1 180px', background: '#fff', color: '#00306F',
-              border: '1px solid #00306F', borderRadius: 6, padding: '11px 12px', fontSize: 13, fontWeight: 700,
-              cursor: real && !busy ? 'pointer' : 'not-allowed', fontFamily: 'Lato', opacity: real && !busy ? 1 : .6,
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            }}>
-              <i className="ri-bank-card-line"></i> Pago Asistido (Agencia)
             </button>
           </div>
 
@@ -325,7 +315,7 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
           {real && sinMetamask && !error && (
             <div style={{ marginTop: 10, fontSize: 12, color: '#6C767A', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
               <i className="ri-information-line" style={{ marginTop: 1 }}></i>
-              MetaMask no detectado en este navegador. Instálalo y conéctalo a Polygon, o usa <strong>“Pago Asistido (Agencia)”</strong> para pagos corporativos.
+              MetaMask no detectado en este navegador. Instálalo y conéctalo a Polygon.
             </div>
           )}
           {!real && (
@@ -426,7 +416,7 @@ const CryptoSuccess = ({ symbol, totalBob = 933, txInfo, passenger, route, onRes
             disabled={!urlExplorer}
           >
             <i className="ri-external-link-line" style={{ marginRight: 8 }}></i>
-            Ver en explorer
+            Auditar en Blockchain
           </Button>
         </div>
       </div>

@@ -122,12 +122,7 @@ export default function BookingApp() {
     setStep(0);
   };
 
-  const adminFab = (
-    <Link className="admin-fab" to="/admin">
-      <i className="ri-dashboard-2-line" style={{ fontSize: 16 }}></i>
-      Panel administrativo
-    </Link>
-  );
+
 
   if (screen === 'home') {
     return (
@@ -136,7 +131,6 @@ export default function BookingApp() {
         <HeroSearch onSearch={(params) => startWizard(params)}/>
         <OfferCards onCardClick={() => startWizard({ trip: 'roundtrip' })}/>
         <Footer/>
-        {adminFab}
       </div>
     );
   }
@@ -152,12 +146,12 @@ export default function BookingApp() {
       total={total} taxes={taxes} baseOut={baseOut} baseRet={baseRet} extrasTotal={extrasTotal}
       setScreen={setScreen} setOutbound={setOutbound} setReturnFlight={setReturnFlight}
       setPassengerField={setPassengerField} toggleExtra={toggleExtra} goNext={goNext} goBack={goBack}
-      adminFab={adminFab} resetAll={resetAll}
+      resetAll={resetAll}
     />
   );
 }
 
-function BookingContent({ step, setStep, tripType, route, outbound, returnFlight, passenger, extras, expanded, setExpanded, reserva, backendOk, total, taxes, baseOut, baseRet, extrasTotal, setScreen, setOutbound, setReturnFlight, setPassengerField, toggleExtra, goNext, goBack, adminFab, resetAll }) {
+function BookingContent({ step, setStep, tripType, route, outbound, returnFlight, passenger, extras, expanded, setExpanded, reserva, backendOk, total, taxes, baseOut, baseRet, extrasTotal, setScreen, setOutbound, setReturnFlight, setPassengerField, toggleExtra, goNext, goBack, resetAll }) {
   const originInfo = getDestino(route.origin);
   const destInfo   = getDestino(route.dest);
 
@@ -227,16 +221,6 @@ function BookingContent({ step, setStep, tripType, route, outbound, returnFlight
 
             <MethodRow id="crypto" expandedId={expanded} onToggle={(id) => setExpanded(prev => prev === id ? null : id)}
               title="Pago con criptoactivos"
-              badge={
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  background: 'linear-gradient(90deg, #E11D2C, #F08A1D, #F8C700, #00A95C)',
-                  color: '#fff', fontSize: 10, fontWeight: 700, letterSpacing: '.06em',
-                  padding: '3px 8px', borderRadius: 4, textTransform: 'uppercase',
-                }}>
-                  <i className="ri-sparkling-line"></i> Nuevo
-                </span>
-              }
               logos={[
                 <span key="usdt" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, height: 18, padding: '0 8px 0 4px', background: '#fff', border: '1px solid #E5E7EB', borderRadius: 3 }}>
                   <CryptoIcon symbol="USDT" size={14}/>
@@ -281,14 +265,10 @@ function BookingContent({ step, setStep, tripType, route, outbound, returnFlight
               }}>
               <i className="ri-arrow-left-line"></i> Atrás
             </button>
-            <Link to="/admin" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#006DB2', textDecoration: 'none', fontWeight: 700, fontSize: 13 }}>
-              <i className="ri-dashboard-line"></i> Panel administrativo →
-            </Link>
           </div>
         </main>
 
         {/* ⛔ Footer omitido en el paso 6 — evita navegar fuera del checkout */}
-        {adminFab}
       </div>
     );
   }
@@ -371,7 +351,6 @@ function BookingContent({ step, setStep, tripType, route, outbound, returnFlight
       </main>
 
       <Footer/>
-      {adminFab}
     </div>
   );
 }

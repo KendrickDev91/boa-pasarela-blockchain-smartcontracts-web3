@@ -7,7 +7,7 @@ export default function PrintableTicket({ pnr, passenger, route, totalUSDT, txHa
   const _passenger = passenger || {
     lastName: "RAMOS",
     firstName: "KENI",
-    documentId: "8484605"
+    docNum: "8484605"
   };
 
   const _route = route || {
@@ -136,7 +136,7 @@ export default function PrintableTicket({ pnr, passenger, route, totalUSDT, txHa
         <div style={{ flex: 1.5 }}>
            <div style={{ marginBottom: '15px' }}>
              <strong>ENDOSOS-RESTRICCIONES<br/>ENDORSEMENT-RESTRICTIONS</strong><br/>
-             NIT|5475114|FLORES
+             CI|{_passenger.docNum}|{_passenger.lastName.toUpperCase()}
            </div>
            <div style={{ marginBottom: '15px' }}>
              <strong>FORMA DE PAGO<br/>FORM OF PAYMENT</strong><br/>
