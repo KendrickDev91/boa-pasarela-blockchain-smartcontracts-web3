@@ -1,0 +1,20 @@
+{
+  "name": "boa-payments-backend",
+  "version": "1.0.0",
+  "description": "Middleware de pagos asíncronos Web3 para BoA",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test:integracion": "npx artillery run test/load-test.yml --output test/casos_de_prueba_de_integracion_entre_componentes.json && npx artillery report test/casos_de_prueba_de_integracion_entre_componentes.json"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "ethers": "^6.11.1",
+    "express": "^4.18.3",
+    "jsonwebtoken": "^9.0.3",
+    "morgan": "^1.12.0",
+    "pg": "^8.11.3"
+  }
+}
