@@ -165,7 +165,7 @@ test('CI-07: el cursor no avanza si la BD falla; el pago se registra en el reint
     assert.equal(est.body.data.estado_pago, 'CONFIRMADO');
 });
 
-test('CI-08: RF-12 - /api/payments/all exige JWT y lista solo pagos confirmados', async () => {
+test('CI-08: RF-11 (conciliación) - /api/payments/all exige JWT y lista solo pagos confirmados', async () => {
     assert.equal((await json('GET', '/api/payments/all')).status, 401);
     const login = await json('POST', '/api/payments/login', { username: 'admin', password: process.env.ADMIN_PASSWORD });
     assert.equal(login.status, 200);
@@ -173,4 +173,24 @@ test('CI-08: RF-12 - /api/payments/all exige JWT y lista solo pagos confirmados'
     assert.equal(r.status, 200);
     assert.ok(r.body.data.length >= 3);
     assert.ok(r.body.data.every((p) => p.tx_hash));
+});
+
+test('CI-09: RF-07 - una solicitud no pagada cuyo plazo venció pasa a EXPIRADO', async () => {
+    const cot = (await json('POST', '/api/reservas', { pnr: P('CI09'), montoBob: 150 })).body;
+    assert.equal(cot.pnr, P('CI09'));
+    // Se adelanta el vencimiento en la base de datos más allá del margen de 2 minutos
+    await pool.query("UPDATE pasarela_pagos_cripto SET vence_en = now() - interval '5 minutes' WHERE id_reserva = $1", [P('CI09')]);
+    await listener.ciclo();
+    const est = await json('GET', '/api/payments/status/' + P('CI09'));
+    assert.equal(est.body.data.estado_pago, 'EXPIRADO');
+    assert.equal(est.body.data.tx_hash, null);
+});
+
+test('CI-10: la cuenta operadora se resincroniza si otra transacción desfasó su nonce', async () => {
+    // Transacción externa firmada con la misma cuenta operadora (cuenta #0 de Hardhat)
+    const externa = new ethers.Wallet('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80', provider);
+    await json('POST', '/api/reservas', { pnr: P('C10A'), montoBob: 100 }); // inicializa el contador local
+    await (await externa.sendTransaction({ to: externa.address, value: 0 })).wait();
+    const r = await json('POST', '/api/reservas', { pnr: P('C10B'), montoBob: 100 });
+    assert.equal(r.status, 201);
 });
