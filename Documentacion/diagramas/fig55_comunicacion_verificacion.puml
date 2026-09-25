@@ -1,0 +1,34 @@
+@startuml
+' Figura 55: Diagrama de comunicación del proceso de verificación, confirmación y liquidación del pago
+' Notación de objetos del diagrama de comunicación UML 2.5 (numeración anidada de mensajes)
+left to right direction
+skinparam objectBorderColor #00306F
+skinparam objectBackgroundColor #FFFFFF
+skinparam ArrowColor #00306F
+
+object ":Pasajero" as P
+object ":InterfazReact" as UI
+object ":ServidorIntermedio" as S
+object ":ApiTipoCambio" as TC
+object ":PostgreSQL" as DB
+object ":BoAPayments" as B
+object ":TokenUSDT" as T
+object ":BilleteraRecaudadora" as R
+object ":SistemaCentralReservas" as N
+
+P --> UI : 1: confirmarReserva()
+UI --> S : 1.1: POST /api/reservas(montoBob)
+S --> TC : 1.1.1: consultarTipoCambio()
+S --> DB : 1.1.2: registrarSolicitud(PENDIENTE)
+S --> B : 1.1.3: registrarTarifa(pnr, monto, venceEn)
+P --> T : 2: approve(BoAPayments, monto)
+P --> B : 3: pagarBoleto(pnr)
+B --> B : 3.1: verificar tarifa, vigencia y unicidad
+B --> T : 3.2: safeTransferFrom(pasajero, recaudadora, monto)
+T --> R : 3.2.1: acreditar(monto)
+B --> B : 3.3: emitir PagoConfirmado
+S --> B : 4: consultarEventos(PagoConfirmado)
+S --> DB : 4.1: registrarPago() [transacción ACID]
+S --> UI : 4.2: notificar(confirmado) [SSE]
+S --> N : 4.3: autorizarEmision(pnr, txHash)
+@enduml
