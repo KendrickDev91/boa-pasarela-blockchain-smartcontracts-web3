@@ -5,14 +5,34 @@ import logoUrl from "../assets/boa-logo.png";
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard',      icon: 'dashboard-line' },
-  { id: 'tx',        label: 'Transacciones',  icon: 'exchange-funds-line', badge: 142 },
+  { id: 'tx',        label: 'Transacciones',  icon: 'exchange-funds-line', badge: 'total' },
   { id: 'clients',   label: 'Clientes',       icon: 'user-3-line' },
   { id: 'reconcile', label: 'Conciliación',   icon: 'scales-3-line' },
   { id: 'contract',  label: 'Smart contract', icon: 'file-code-line' },
   { id: 'settings',  label: 'Configuración',  icon: 'settings-3-line' },
 ];
 
-export const AdminSidebar = ({ active, onNav, onLogout }) => (
+// Total real de pagos confirmados registrados (mismo origen que el panel de conciliación)
+const useTotalTransacciones = () => {
+  const [total, setTotal] = useState(null);
+  useEffect(() => {
+    const cargar = () => {
+      const token = localStorage.getItem('boa_admin_token');
+      fetch('http://localhost:3000/api/payments/all', { headers: { 'Authorization': `Bearer ${token}` } })
+        .then(res => res.json())
+        .then(res => { if (res.success && res.data) setTotal(res.data.length); })
+        .catch(() => {});
+    };
+    cargar();
+    const intervalo = setInterval(cargar, 15000);
+    return () => clearInterval(intervalo);
+  }, []);
+  return total;
+};
+
+export const AdminSidebar = ({ active, onNav, onLogout }) => {
+  const totalTx = useTotalTransacciones();
+  return (
   <aside className="admin-sidebar" style={{
     width: 240, background: '#00204D', color: '#fff',
     display: 'flex', flexDirection: 'column',
@@ -39,8 +59,8 @@ export const AdminSidebar = ({ active, onNav, onLogout }) => (
           }}>
             <i className={`ri-${n.icon}`} style={{ fontSize: 18 }}></i>
             <span style={{ flex: 1 }}>{n.label}</span>
-            {n.badge != null && (
-              <span style={{ background: '#F08A1D', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999 }}>{n.badge}</span>
+            {n.badge === 'total' && totalTx != null && (
+              <span style={{ background: '#F08A1D', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999 }}>{totalTx}</span>
             )}
           </button>
         );
@@ -57,7 +77,8 @@ export const AdminSidebar = ({ active, onNav, onLogout }) => (
       </button>
     </div>
   </aside>
-);
+  );
+};
 
 export const AdminTopbar = ({ title, subtitle, children }) => (
   <div style={{
