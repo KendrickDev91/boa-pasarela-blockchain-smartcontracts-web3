@@ -13,6 +13,25 @@ function generarPnr() {
 }
 
 /**
+ * Firma registrarTarifa con la cuenta operadora. Si la cuenta firmó otra transacción
+ * fuera de este proceso, el contador local de nonce queda desfasado (NONCE_EXPIRED):
+ * se resincroniza con la red y se reintenta una sola vez.
+ */
+async function registrarOnChain(boa, pnr, unidades, venceEn) {
+    for (let intento = 1; ; intento++) {
+        try {
+            const tx = await boa.connect(operador).registrarTarifa(pnr, unidades, venceEn);
+            return await tx.wait();
+        } catch (err) {
+            const nonceDesfasado = err.code === 'NONCE_EXPIRED' || /nonce/i.test(err.shortMessage || err.message);
+            if (!nonceDesfasado || intento > 1) throw err;
+            console.warn('[OPERADOR] Nonce desfasado; se resincroniza con la red y se reintenta.');
+            operador.reset();
+        }
+    }
+}
+
+/**
  * Crea la solicitud de pago de una reserva:
  *  1. obtiene el tipo de cambio (API o contingencia);
  *  2. convierte la tarifa a unidades del token;
@@ -56,8 +75,7 @@ async function crearSolicitud({ pnr, montoBob }) {
     }
 
     try {
-        const tx = await boa.connect(operador).registrarTarifa(pnr, unidades, venceEn);
-        await tx.wait();
+        await registrarOnChain(boa, pnr, unidades, venceEn);
     } catch (err) {
         if (rows[0].insertado) {
             await pool.query(`DELETE FROM pasarela_pagos_cripto WHERE id_reserva = $1 AND estado_pago = 'PENDIENTE'`, [pnr]);
