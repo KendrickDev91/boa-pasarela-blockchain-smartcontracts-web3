@@ -1,0 +1,33 @@
+@startuml
+' Figura 55: Diagrama de secuencia del proceso de verificación, confirmación y liquidación del pago
+actor Pasajero
+participant "Interfaz React" as UI
+participant "Servidor intermedio" as S
+participant "API tipo de cambio" as TC
+participant "BoAPayments" as B
+participant "Token USDT" as T
+database PostgreSQL as DB
+participant "Sistema central" as N
+Pasajero -> UI : confirma la reserva
+UI -> S : POST /api/reservas (montoBob)
+S -> TC : consulta usd_bob
+TC --> S : tipo de cambio oficial
+S -> DB : solicitud PENDIENTE
+S -> B : registrarTarifa(pnr, unidades, venceEn)
+S --> UI : PNR, monto en USDT, vencimiento
+UI -> S : GET /api/pagos/{pnr}/stream (SSE)
+Pasajero -> T : approve(BoAPayments, unidades) [firma 1/2]
+Pasajero -> B : pagarBoleto(pnr) [firma 2/2]
+B -> B : verifica tarifa, vigencia y unicidad;\nmarca el PNR como pagado
+B -> T : safeTransferFrom(pasajero, recaudadora, unidades)
+B --> B : emit PagoConfirmado
+loop cada 3 s (con N confirmaciones)
+  S -> B : queryFilter(PagoConfirmado)
+end
+S -> DB : BEGIN; INSERT transacción; UPDATE CONFIRMADO; COMMIT
+S --> UI : evento SSE "confirmado"
+S -> N : POST autorización de emisión
+N --> S : acuse
+S -> DB : estado_emision = EMITIDO
+UI --> Pasajero : boleto emitido
+@enduml

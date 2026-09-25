@@ -1,0 +1,34 @@
+@startuml
+' Figura 52: Diagrama de componentes de la arquitectura del sistema
+package "Capa de presentación" {
+  [Aplicación web React (Vite)] as FE
+  [Billetera MetaMask] as MM
+}
+package "Capa de integración (servidor intermedio)" {
+  [API REST Express] as API
+  [Canal SSE] as SSE
+  [Escucha de eventos\n(ethers.js, JSON-RPC)] as LIS
+  [Servicio de cotización] as QS
+}
+package "Capa blockchain (red de pruebas compatible con Polygon)" {
+  [BoAPayments.sol] as BOA
+  [Token USDT (ERC-20)] as TK
+}
+package "Capa de persistencia" {
+  database "PostgreSQL 16 (Docker)" as DB
+}
+[Sistema central de reservas BoA] as CORE
+[API de tipo de cambio (BCB vía factura.bo)] as TC
+FE --> API : HTTPS / JSON
+FE --> SSE : text/event-stream
+FE --> MM : solicitudes de firma
+MM --> TK : approve
+MM --> BOA : pagarBoleto
+BOA --> TK : transferFrom
+QS --> TC : consulta de cotización
+QS --> BOA : registrarTarifa (cuenta operadora)
+LIS --> BOA : eventos PagoConfirmado
+API --> DB : SQL (transacciones ACID)
+LIS --> DB
+API --> CORE : notificación de emisión (REST + token)
+@enduml

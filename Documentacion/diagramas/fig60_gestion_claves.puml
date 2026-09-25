@@ -1,0 +1,12 @@
+@startuml
+' Figura 60: Esquema de gestión de claves y custodia de fondos
+rectangle "Billetera del pasajero\n(autocustodia, MetaMask)" as P
+rectangle "Contrato BoAPayments\n(dirección pública en Polygon)" as B
+rectangle "Cuenta operadora del servidor intermedio\n(clave en línea, variables de entorno;\nsin facultad de mover fondos)" as O
+rectangle "Cuenta propietaria del contrato\n(billetera fría en producción)" as W
+rectangle "Billetera recaudadora BoA\n(billetera fría en producción;\nbilletera de software en el entorno de pruebas)" as R
+P --> B : firma approve + pagarBoleto
+O --> B : registrarTarifa
+W --> B : onlyOwner: actualizar recaudadora u operador,\nrescatar tokens
+B --> R : transferencia del importe registrado
+@enduml

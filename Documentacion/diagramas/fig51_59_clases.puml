@@ -1,0 +1,78 @@
+@startuml
+' Figuras 51 y 59: Diagrama de clases del módulo de pago
+skinparam classAttributeIconSize 0
+package "On-chain (Solidity)" {
+  abstract class Ownable <<OpenZeppelin>>
+  abstract class ReentrancyGuard <<OpenZeppelin>>
+  interface IERC20 {
+    +approve(spender, amount) : bool
+    +transferFrom(from, to, amount) : bool
+    +balanceOf(cuenta) : uint256
+  }
+  class BoAPayments <<contract>> {
+    +usdtToken : IERC20 {readOnly}
+    +billeteraRecaudadora : address
+    +operador : address
+    -tarifaPorPnr : mapping(bytes32 => Tarifa)
+    -pnrPagados : mapping(bytes32 => bool)
+    +registrarTarifa(pnr, monto, venceEn) <<soloOperador>>
+    +pagarBoleto(pnr) <<nonReentrant>>
+    +verificarPago(pnr) : bool
+    +consultarTarifa(pnr) : (monto, venceEn)
+    +actualizarBilleteraRecaudadora(nueva) <<onlyOwner>>
+    +actualizarOperador(nuevo) <<onlyOwner>>
+    +rescatarTokens(token, destino, monto) <<onlyOwner>>
+    .. eventos ..
+    TarifaRegistrada(pnr, monto, venceEn)
+    PagoConfirmado(cliente, pnr, monto, timestamp)
+  }
+  class Tarifa <<struct>> {
+    monto : uint256
+    venceEn : uint64
+  }
+  BoAPayments --|> Ownable
+  BoAPayments --|> ReentrancyGuard
+  BoAPayments ..> IERC20 : safeTransferFrom
+  BoAPayments *-- Tarifa
+}
+package "Off-chain (Node.js + PostgreSQL)" {
+  class QuoteService {
+    +crearSolicitud(pnr, montoBob)
+  }
+  class ExchangeRateService {
+    +obtenerTipoCambio()
+    +bobAUnidades(montoBob, tipoCambio)
+  }
+  class BlockchainListener {
+    +ciclo()
+    -leerCursor() / guardarCursor()
+  }
+  class PaymentService {
+    +procesarEvento(evento)
+    +expirarSolicitudes()
+    +reintentarEmisiones()
+  }
+  class Notifier <<SSE>> {
+    +suscribir(pnr) / publicar(pnr, datos)
+  }
+  class pasarela_pagos_cripto <<tabla>> {
+    id_reserva : VARCHAR(10) <<PK>>
+    monto_bob, tipo_cambio, fuente_tipo_cambio
+    monto_stablecoin, estado_pago, estado_emision
+    fecha_solicitud, vence_en, fecha_confirmacion
+  }
+  class transacciones_blockchain <<tabla>> {
+    tx_hash : VARCHAR(66) <<PK>>
+    id_reserva : VARCHAR(10) <<FK, UNIQUE>>
+    bloque_numero, origen_address, monto_transferido, gas_pagado
+  }
+  QuoteService --> ExchangeRateService
+  QuoteService ..> BoAPayments : registrarTarifa
+  BlockchainListener ..> BoAPayments : eventos PagoConfirmado (JSON-RPC)
+  BlockchainListener --> PaymentService
+  PaymentService --> Notifier
+  PaymentService --> pasarela_pagos_cripto
+  PaymentService --> transacciones_blockchain
+  pasarela_pagos_cripto "1" -- "0..1" transacciones_blockchain
+}
+@enduml

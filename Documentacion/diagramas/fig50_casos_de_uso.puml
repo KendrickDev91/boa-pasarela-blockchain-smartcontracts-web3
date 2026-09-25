@@ -1,0 +1,29 @@
+@startuml
+' Figura 50: Diagrama de casos de uso del módulo de pago
+left to right direction
+skinparam packageStyle rectangle
+actor "Pasajero" as P
+actor "Personal de Finanzas" as F
+actor "Sistema central\nde reservas" as N
+rectangle "Pasarela de cobro en USDT - BoA" {
+  usecase "Buscar y seleccionar vuelo" as UC1
+  usecase "Ingresar datos del pasajero" as UC2
+  usecase "Elegir el pago con criptoactivos" as UC3
+  usecase "Firmar la autorización\nde gasto y el pago" as UC4
+  usecase "Conectar billetera Web3" as UC5
+  usecase "Consultar la transacción\nen el explorador" as UC6
+  usecase "Consultar la conciliación\nde pagos" as UC7
+  usecase "Iniciar sesión" as UC8
+  usecase "Recibir notificación\nde emisión" as UC9
+}
+P --> UC1
+P --> UC2
+P --> UC3
+P --> UC4
+P --> UC6
+UC4 ..> UC5 : <<include>>
+F --> UC7
+UC7 ..> UC8 : <<include>>
+UC9 <-- N
+UC4 ..> UC9 : <<include>>
+@enduml

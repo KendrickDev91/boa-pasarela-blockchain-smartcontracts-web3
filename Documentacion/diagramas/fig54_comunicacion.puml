@@ -1,0 +1,19 @@
+@startuml
+' Figura 54: Diagrama de comunicación del proceso de pago
+object "Servidor intermedio" as S
+object "BoAPayments" as B
+object "Token USDT" as T
+object "Pasajero (MetaMask)" as P
+object "PostgreSQL" as D
+object "Sistema central de reservas" as N
+object "Billetera recaudadora BoA" as R
+S --> B : 1: registrarTarifa(pnr, monto, venceEn)
+P --> T : 2: approve(BoAPayments, monto)
+P --> B : 3: pagarBoleto(pnr)
+B --> T : 4: transferFrom(pasajero, recaudadora, monto)
+T --> R : 4.1: saldo acreditado
+B --> S : 5: evento PagoConfirmado (6: recuperado vía JSON-RPC)
+S --> D : 7: registro ACID del pago y la transacción
+S --> P : 8: notificación SSE "confirmado"
+S --> N : 9: autorización de emisión del boleto
+@enduml
