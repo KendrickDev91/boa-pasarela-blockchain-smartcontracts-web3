@@ -20,7 +20,14 @@ async function obtenerTipoCambio() {
         const valor = Number(data?.datos?.usd_bob);
         if (!Number.isFinite(valor) || valor <= 0) throw new Error('Respuesta sin usd_bob válido');
 
-        await pool.query('INSERT INTO tipos_cambio (valor, fuente) VALUES ($1, $2)', [valor, config.cotizacion.apiUrl]);
+        // Histórico diario: una fila por valor distinto en cada día (no una por consulta)
+        await pool.query(
+            `INSERT INTO tipos_cambio (valor, fuente)
+             SELECT $1, $2
+              WHERE NOT EXISTS (SELECT 1 FROM tipos_cambio
+                                 WHERE valor = $1 AND fuente = $2 AND consultado_en::date = now()::date)`,
+            [valor, config.cotizacion.apiUrl]
+        );
         return { valor, fuente: 'API', consultadoEn: new Date() };
     } catch (err) {
         console.warn(`[TIPO DE CAMBIO] API no disponible (${err.message}); se usa la última cotización registrada.`);

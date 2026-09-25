@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS pasarela_pagos_cripto (
     id_reserva                  VARCHAR(10)   PRIMARY KEY,                 -- PNR
     monto_bob                   NUMERIC(12,2) NOT NULL CHECK (monto_bob > 0),
     tipo_cambio                 NUMERIC(10,4) NOT NULL CHECK (tipo_cambio > 0),
-    fuente_tipo_cambio          VARCHAR(20)   NOT NULL CHECK (fuente_tipo_cambio IN ('API', 'CONTINGENCIA')),
+    fuente_tipo_cambio          VARCHAR(20)   NOT NULL CHECK (fuente_tipo_cambio IN ('API', 'CONTINGENCIA', 'TASA_FIJA')),
     monto_stablecoin            NUMERIC(18,6) NOT NULL CHECK (monto_stablecoin > 0),
     token_simbolo               VARCHAR(10)   NOT NULL DEFAULT 'USDT',
     direccion_contrato          VARCHAR(42)   NOT NULL,
