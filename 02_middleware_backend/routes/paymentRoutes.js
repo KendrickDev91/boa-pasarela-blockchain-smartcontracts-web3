@@ -3,9 +3,10 @@ const router = express.Router();
 const paymentController = require('../controllers/paymentController');
 const authController = require('../controllers/authController');
 const authMiddleware = require('../middleware/authMiddleware');
+const limitarLogin = require('../middleware/loginRateLimit');
 
 // Autenticación del personal de Finanzas (JWT)
-router.post('/login', authController.login.bind(authController));
+router.post('/login', limitarLogin, authController.login.bind(authController));
 
 // RF-12: listado de pagos confirmados para conciliación (requiere JWT)
 router.get('/all', authMiddleware, paymentController.getAll.bind(paymentController));
