@@ -229,7 +229,7 @@ export default function BlockchainExplorer() {
           color: '#6C767A',
           background: '#F9FAFB',
         }}>
-          <div>Explorador interno del prototipo · datos del registro de auditoría de BoA</div>
+          <div>Explorador interno de la pasarela · datos del registro de auditoría de BoA</div>
           <div>Verificación pública: explorador oficial de la red configurada</div>
         </div>
 
