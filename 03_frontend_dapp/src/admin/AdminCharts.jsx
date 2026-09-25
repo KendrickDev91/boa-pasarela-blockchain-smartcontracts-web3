@@ -75,7 +75,7 @@ export const AreaChart = ({ data, width = 720, height = 220, accent = '#00306F' 
         <circle key={i} cx={p[0] || 0} cy={p[1] || 0} r="3" fill="#fff" stroke={accent} strokeWidth="2"/>
       ))}
       {data.map((d, i) => (
-        i % 2 === 0 ? <text key={i} x={(padL + i * xStep) || 0} y={H - 8} textAnchor="middle" fontSize="10" fill="#6C767A" fontFamily="Lato">{d.x}</text> : null
+        (data.length <= 8 || i % 2 === 0) ? <text key={i} x={(padL + i * xStep) || 0} y={H - 8} textAnchor="middle" fontSize="10" fill="#6C767A" fontFamily="Lato">{d.x}</text> : null
       ))}
     </svg>
   );

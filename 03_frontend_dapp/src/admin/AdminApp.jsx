@@ -11,7 +11,7 @@ import { BOA_PAYMENTS_ADDRESS } from '../constants/contracts.js';
 import boaLogo from '../assets/boa-logo.png';
 
 const TITLES = {
-  dashboard: { t: 'Dashboard',     s: 'Métricas calculadas en tiempo real desde la blockchain' },
+  dashboard: { t: 'Dashboard',     s: 'Métricas calculadas con los pagos confirmados en la cadena de bloques' },
   tx:        { t: 'Transacciones', s: 'Visor de auditoría criptográfica' },
   clients:   { t: 'Gestión de Reservas', s: 'Agrupación dinámica de PNRs procesados' },
   reconcile: { t: 'Conciliación',  s: 'Liquidación on-chain ↔ Base de datos' },

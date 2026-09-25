@@ -9,6 +9,7 @@ router.post('/login', authController.login.bind(authController));
 
 // RF-12: listado de pagos confirmados para conciliación (requiere JWT)
 router.get('/all', authMiddleware, paymentController.getAll.bind(paymentController));
+router.get('/resumen', authMiddleware, paymentController.getResumen.bind(paymentController));
 
 // Consultas de estado y trazabilidad
 router.get('/status/:pnr', paymentController.getStatus.bind(paymentController));

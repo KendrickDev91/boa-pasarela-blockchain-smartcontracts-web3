@@ -3,6 +3,8 @@ const config = require('../config');
 const { crearSolicitud } = require('../services/quoteService');
 const { obtenerTipoCambio } = require('../services/exchangeRateService');
 const notifier = require('../services/notifier');
+const { ethers } = require('ethers');
+const { provider, operador } = require('../config/web3');
 
 // Columnas con los alias que ya consume el frontend (se conserva el contrato de la API)
 const SELECT_PAGO = `
@@ -15,6 +17,7 @@ const SELECT_PAGO = `
            p.fuente_tipo_cambio,
            p.direccion_billetera_cliente AS wallet_cliente,
            p.vence_en,
+           p.fecha_solicitud,
            p.fecha_confirmacion          AS fecha_pago,
            t.tx_hash,
            t.bloque_numero               AS bloque_red,
@@ -43,14 +46,24 @@ class PaymentController {
         }
     }
 
-    /** GET /api/chain — parámetros de red para el frontend */
-    chainInfo(req, res) {
-        return res.json({
+    /** GET /api/chain — parámetros de red y estado de la cuenta operadora para el frontend */
+    async chainInfo(req, res) {
+        const REDES = { 31337: 'Red local de pruebas (Hardhat)', 80002: 'Polygon Amoy (red de pruebas)', 137: 'Polygon PoS' };
+        const datos = {
             success: true,
             chainId: config.chain.chainId,
+            red: REDES[config.chain.chainId] || `Red ${config.chain.chainId}`,
             contracts: { BoAPayments: config.chain.contractAddress, token: config.chain.tokenAddress },
             decimals: 6,
-        });
+        };
+        try {
+            const cuenta = await operador.getAddress();
+            const [saldo, bloque] = await Promise.all([provider.getBalance(cuenta), provider.getBlockNumber()]);
+            Object.assign(datos, { operador: cuenta, saldoGasOperador: ethers.formatEther(saldo), bloqueActual: bloque, nodoDisponible: true });
+        } catch (err) {
+            datos.nodoDisponible = false;
+        }
+        return res.json(datos);
     }
 
     /** GET /api/payments/status/:pnr */
@@ -103,6 +116,19 @@ class PaymentController {
             return res.json({ success: true, tasa: tc.valor, fuente: tc.fuente, consultadoEn: tc.consultadoEn });
         } catch (err) {
             return manejarError(res, err, 'getExchangeRate');
+        }
+    }
+
+    /** GET /api/payments/resumen (JWT) — solicitudes por estado, para calcular la tasa de conversión */
+    async getResumen(req, res) {
+        try {
+            const { rows } = await pool.query(
+                'SELECT estado_pago, count(*)::int AS total FROM pasarela_pagos_cripto GROUP BY estado_pago'
+            );
+            const porEstado = Object.fromEntries(rows.map((r) => [r.estado_pago, r.total]));
+            return res.json({ success: true, porEstado });
+        } catch (err) {
+            return manejarError(res, err, 'getResumen');
         }
     }
 
