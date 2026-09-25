@@ -1,20 +1,34 @@
+# Prueba de carga de la capa HTTP del servidor intermedio (RNF-08).
+# Alcance: rutas de consulta y conciliación. NO incluye la confirmación en la cadena
+# de bloques, cuya latencia depende del tiempo de bloque de la red.
+# Requiere ADMIN_USER y ADMIN_PASSWORD en el entorno de ejecución de Artillery.
 config:
   target: 'http://localhost:3000'
   phases:
     - duration: 15
       arrivalRate: 5
-      name: "Warm up"
+      name: "Calentamiento"
     - duration: 30
       arrivalRate: 5
       rampTo: 40
-      name: "Ramp up load"
+      name: "Rampa de carga"
     - duration: 15
       arrivalRate: 40
-      name: "Sustained peak load"
+      name: "Carga pico sostenida"
 scenarios:
-  - name: "Consultar pagos y simular reserva"
+  - name: "Consulta de estado, tipo de cambio y conciliación"
     flow:
+      - post:
+          url: "/api/payments/login"
+          json:
+            username: "{{ $processEnvironment.ADMIN_USER }}"
+            password: "{{ $processEnvironment.ADMIN_PASSWORD }}"
+          capture:
+            json: "$.token"
+            as: "token"
       - get:
           url: "/api/payments/all"
-      - post:
-          url: "/api/reservas"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/api/payments/rate"

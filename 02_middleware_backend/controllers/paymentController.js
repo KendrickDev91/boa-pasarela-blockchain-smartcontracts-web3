@@ -1,175 +1,138 @@
-const dbPool = require('../config/db');
+const pool = require('../config/db');
+const config = require('../config');
+const { crearSolicitud } = require('../services/quoteService');
+const { obtenerTipoCambio } = require('../services/exchangeRateService');
+const notifier = require('../services/notifier');
+
+// Columnas con los alias que ya consume el frontend (se conserva el contrato de la API)
+const SELECT_PAGO = `
+    SELECT p.id_reserva                  AS pnr,
+           p.estado_pago,
+           p.estado_emision,
+           p.monto_bob,
+           p.monto_stablecoin            AS monto_usdt,
+           p.tipo_cambio,
+           p.fuente_tipo_cambio,
+           p.direccion_billetera_cliente AS wallet_cliente,
+           p.vence_en,
+           p.fecha_confirmacion          AS fecha_pago,
+           t.tx_hash,
+           t.bloque_numero               AS bloque_red,
+           t.gas_pagado
+      FROM pasarela_pagos_cripto p
+ LEFT JOIN transacciones_blockchain t USING (id_reserva)`;
+
+const PNR_VALIDO = /^[A-Z0-9]{1,10}$/;
+const HASH_VALIDO = /^0x[0-9a-fA-F]{64}$/;
+
+function manejarError(res, err, contexto) {
+    const status = err.status || 500;
+    if (status >= 500) console.error(`[CONTROLLER] ${contexto}:`, err.message);
+    return res.status(status).json({ success: false, message: status >= 500 ? 'Error interno del servidor' : err.message });
+}
 
 class PaymentController {
-    /**
-     * Consulta el estado de pago y auditoría de un boleto mediante su PNR
-     */
-    async getStatus(req, res) {
-        const { pnr } = req.params;
-        
+    /** POST /api/reservas — núcleo simulado: registra la reserva y genera los parámetros de cobro */
+    async crearReserva(req, res) {
         try {
-            // Consulta unificada para obtener el estado del boleto y los datos de auditoría
-            const queryText = `
-                SELECT b.estado_emision, b.monto_usdt, b.tipo_cambio, b.wallet_cliente, a.tx_hash, a.bloque_red 
-                FROM boletos_pagados b 
-                LEFT JOIN auditoria_blockchain a ON b.pnr = a.pnr_relacionado 
-                WHERE b.pnr = $1;
-            `;
-            const { rows } = await dbPool.query(queryText, [pnr]);
-
-            if (rows.length === 0) {
-                return res.status(404).json({ 
-                    success: false, 
-                    message: 'PNR no registrado en el sistema' 
-                });
-            }
-
-            return res.status(200).json({ 
-                success: true, 
-                data: rows[0] 
-            });
-
-        } catch (error) {
-            console.error(`[CONTROLLER ERROR] Fallo al consultar PNR ${pnr}:`, error);
-            return res.status(500).json({ 
-                success: false, 
-                message: 'Error interno del servidor al procesar la solicitud' 
-            });
+            const { pnr, montoBob, montoFiat } = req.body || {};
+            const datos = await crearSolicitud({ pnr, montoBob: montoBob ?? montoFiat });
+            return res.status(201).json({ success: true, ...datos });
+        } catch (err) {
+            return manejarError(res, err, 'crearReserva');
         }
     }
 
-    /**
-     * Consulta el estado de pago y auditoría mediante su hash de transacción (Para Explorer Público)
-     */
+    /** GET /api/chain — parámetros de red para el frontend */
+    chainInfo(req, res) {
+        return res.json({
+            success: true,
+            chainId: config.chain.chainId,
+            contracts: { BoAPayments: config.chain.contractAddress, token: config.chain.tokenAddress },
+            decimals: 6,
+        });
+    }
+
+    /** GET /api/payments/status/:pnr */
+    async getStatus(req, res) {
+        const pnr = String(req.params.pnr || '').toUpperCase();
+        if (!PNR_VALIDO.test(pnr)) return res.status(400).json({ success: false, message: 'PNR inválido' });
+        try {
+            const { rows } = await pool.query(`${SELECT_PAGO} WHERE p.id_reserva = $1`, [pnr]);
+            if (!rows.length) return res.status(404).json({ success: false, message: 'PNR no registrado en el sistema' });
+            return res.json({ success: true, data: rows[0] });
+        } catch (err) {
+            return manejarError(res, err, `getStatus ${pnr}`);
+        }
+    }
+
+    /** GET /api/payments/tx/:hash */
     async getByHash(req, res) {
         const { hash } = req.params;
+        if (!HASH_VALIDO.test(hash)) return res.status(400).json({ success: false, message: 'Hash inválido' });
         try {
-            const queryText = `
-                SELECT b.estado_emision, b.monto_usdt, b.wallet_cliente, a.tx_hash, a.bloque_red, b.fecha_pago AT TIME ZONE 'UTC' as fecha_pago 
-                FROM boletos_pagados b 
-                INNER JOIN auditoria_blockchain a ON b.pnr = a.pnr_relacionado 
-                WHERE a.tx_hash = $1;
-            `;
-            const { rows } = await dbPool.query(queryText, [hash]);
-
-            if (rows.length === 0) {
-                return res.status(404).json({ success: false, message: 'Hash no encontrado en los registros de auditoría' });
-            }
-            return res.status(200).json({ success: true, data: rows[0] });
-        } catch (error) {
-            console.error(`[CONTROLLER ERROR] Fallo al consultar hash ${hash}:`, error);
-            return res.status(500).json({ success: false, message: 'Error interno' });
+            const { rows } = await pool.query(`${SELECT_PAGO} WHERE t.tx_hash = $1`, [hash]);
+            if (!rows.length) return res.status(404).json({ success: false, message: 'Hash no encontrado en los registros de auditoría' });
+            return res.json({ success: true, data: rows[0] });
+        } catch (err) {
+            return manejarError(res, err, 'getByHash');
         }
     }
 
-    /**
-     * Consulta el listado completo de transacciones para el Dashboard de Conciliación
-     * Cumplimiento del requerimiento RF-12. Se exige obligatoriamente un rango de fechas.
-     */
+    /** GET /api/payments/all (JWT) — RF-12: pagos confirmados para conciliación, filtrables por fecha */
     async getAll(req, res) {
         try {
             const { startDate, endDate } = req.query;
-
-            let queryText = `
-                SELECT 
-                    b.pnr, 
-                    a.tx_hash, 
-                    a.bloque_red,
-                    b.wallet_cliente,
-                    b.monto_usdt, 
-                    b.tipo_cambio,
-                    b.fecha_pago AT TIME ZONE 'UTC' as fecha_pago, 
-                    b.estado_emision 
-                FROM boletos_pagados b 
-                LEFT JOIN auditoria_blockchain a ON b.pnr = a.pnr_relacionado 
-            `;
-            const queryParams = [];
-
+            const params = [];
+            let filtro = 'WHERE t.tx_hash IS NOT NULL';
             if (startDate && endDate) {
-                queryText += ` WHERE b.fecha_pago >= $1 AND b.fecha_pago <= $2 `;
-                queryParams.push(startDate, endDate);
+                filtro += ' AND p.fecha_confirmacion BETWEEN $1 AND $2';
+                params.push(startDate, endDate);
             }
-            
-            queryText += ` ORDER BY b.fecha_pago DESC;`;
-
-            const { rows } = await dbPool.query(queryText, queryParams);
-
-            return res.status(200).json({ 
-                success: true, 
-                data: rows 
-            });
-
-        } catch (error) {
-            console.error('[CONTROLLER ERROR] Fallo al consultar todas las transacciones:', error.message);
-            return res.status(500).json({ 
-                success: false, 
-                message: 'Error interno del servidor al obtener registros' 
-            });
+            const { rows } = await pool.query(`${SELECT_PAGO} ${filtro} ORDER BY p.fecha_confirmacion DESC LIMIT 5000`, params);
+            return res.json({ success: true, data: rows });
+        } catch (err) {
+            return manejarError(res, err, 'getAll');
         }
     }
 
-    /**
-     * Consulta la cotización en tiempo real para conversión (RF-02)
-     */
+    /** GET /api/payments/rate — tipo de cambio vigente (API o contingencia) */
     async getExchangeRate(req, res) {
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 segundos timeout
-            
-            const response = await fetch('https://api.factura.bo/ExchangeRate', { signal: controller.signal });
-            clearTimeout(timeoutId);
-            const data = await response.json();
-            
-            const tasa = parseFloat(data.datos.usd_bob);
-            if (isNaN(tasa)) throw new Error("La tasa recibida no es un número válido");
-            
-            return res.status(200).json({ success: true, tasa, fuente: 'api.factura.bo' });
-        } catch (error) {
-            console.error('[CONTROLLER ERROR] Falla en API externa (tiempo real):', error.message);
-            // Resiliencia: Fallback a contingencia parametrizada en BD
-            try {
-                // Generar tabla de contingencia dinámicamente si no existe
-                await dbPool.query(`CREATE TABLE IF NOT EXISTS parametros_contingencia (clave VARCHAR(50) PRIMARY KEY, valor DECIMAL)`);
-                await dbPool.query(`INSERT INTO parametros_contingencia (clave, valor) VALUES ('tasa_usdt', 10.00) ON CONFLICT DO NOTHING`);
-                
-                const { rows } = await dbPool.query(`SELECT valor FROM parametros_contingencia WHERE clave = 'tasa_usdt'`);
-                return res.status(200).json({ success: true, tasa: parseFloat(rows[0].valor), fuente: 'contingencia_bd' });
-            } catch (dbError) {
-                return res.status(500).json({ success: false, message: 'Error crítico: cotizador no disponible' });
-            }
+            const tc = await obtenerTipoCambio();
+            return res.json({ success: true, tasa: tc.valor, fuente: tc.fuente, consultadoEn: tc.consultadoEn });
+        } catch (err) {
+            return manejarError(res, err, 'getExchangeRate');
         }
     }
 
-    /**
-     * Módulo de Conciliación Histórica (Auditoría)
-     */
+    /** GET /api/payments/rate/history/:fecha — cotización registrada en una fecha (auditoría) */
     async getHistoricalRate(req, res) {
-        const { fecha } = req.params; // Formato YYYY-MM-DD
+        const { fecha } = req.params;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return res.status(400).json({ success: false, message: 'Formato de fecha AAAA-MM-DD' });
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000);
-            
-            const response = await fetch(`https://api.factura.bo/ExchangeRate/history/${fecha}`, { signal: controller.signal });
-            clearTimeout(timeoutId);
-            const data = await response.json();
-            
-            const tasa = parseFloat(data.datos.usd_bob);
-            if (isNaN(tasa)) throw new Error("La tasa histórica recibida no es válida");
-            
-            return res.status(200).json({ success: true, fecha, tasa, fuente: 'api.factura.bo' });
-        } catch (error) {
-            console.error(`[CONTROLLER ERROR] Falla en API externa (histórica para ${fecha}):`, error.message);
-            // Resiliencia: Fallback a contingencia parametrizada en BD
-            try {
-                await dbPool.query(`CREATE TABLE IF NOT EXISTS parametros_contingencia (clave VARCHAR(50) PRIMARY KEY, valor DECIMAL)`);
-                await dbPool.query(`INSERT INTO parametros_contingencia (clave, valor) VALUES ('tasa_usdt', 10.00) ON CONFLICT DO NOTHING`);
-                
-                const { rows } = await dbPool.query(`SELECT valor FROM parametros_contingencia WHERE clave = 'tasa_usdt'`);
-                return res.status(200).json({ success: true, fecha, tasa: parseFloat(rows[0].valor), fuente: 'contingencia_bd' });
-            } catch (dbError) {
-                return res.status(500).json({ success: false, message: 'Error crítico: cotizador histórico no disponible' });
-            }
+            const { rows } = await pool.query(
+                `SELECT valor, fuente, consultado_en FROM tipos_cambio
+                  WHERE consultado_en < ($1::date + 1) ORDER BY consultado_en DESC LIMIT 1`, [fecha]);
+            if (!rows.length) return res.status(404).json({ success: false, message: 'Sin cotización registrada para esa fecha' });
+            return res.json({ success: true, fecha, tasa: Number(rows[0].valor), fuente: rows[0].fuente, consultadoEn: rows[0].consultado_en });
+        } catch (err) {
+            return manejarError(res, err, 'getHistoricalRate');
         }
+    }
+
+    /** GET /api/pagos/:pnr/stream — canal SSE; envía el estado actual si ya está confirmado */
+    async stream(req, res) {
+        const pnr = String(req.params.pnr || '').toUpperCase();
+        if (!PNR_VALIDO.test(pnr)) return res.status(400).end();
+        let actual = null;
+        try {
+            const { rows } = await pool.query(`${SELECT_PAGO} WHERE p.id_reserva = $1`, [pnr]);
+            if (rows[0]?.tx_hash) actual = { estadoPago: 'confirmado', txHash: rows[0].tx_hash, bloque: Number(rows[0].bloque_red) };
+        } catch (err) {
+            console.error('[SSE] No se pudo leer el estado inicial:', err.message);
+        }
+        notifier.suscribir(req, res, pnr, actual);
     }
 }
 

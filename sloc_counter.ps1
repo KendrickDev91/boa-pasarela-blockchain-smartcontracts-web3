@@ -1,35 +1,43 @@
 $ErrorActionPreference = "SilentlyContinue"
 
-Write-Host "===================================================" -ForegroundColor Cyan
-Write-Host "  METRICAS DE CODIGO FUENTE (COCOMO) - BoA PAYMENTS " -ForegroundColor White -BackgroundColor DarkBlue
-Write-Host "===================================================" -ForegroundColor Cyan
+# =========================================================
+# Conteo de líneas lógicas de código fuente (SLOC) para COCOMO II
+# Criterio: se excluyen líneas en blanco, comentarios, dependencias (node_modules),
+# artefactos de compilación y archivos generados (package-lock.json, reportes .json).
+# Se cuentan solo archivos escritos para el proyecto: .sol .js .jsx .css .sql
+# =========================================================
 
-# 1. Frontend
-$frontLines = (Get-ChildItem -Path 03_frontend_dapp -Recurse -File -Include *.jsx,*.js,*.css,*.json | Where-Object { $_.FullName -notmatch '\\node_modules\\' -and $_.FullName -notmatch '\\dist\\' }) | Get-Content | Measure-Object -Line
-$front = $frontLines.Lines
+function Contar-SLOC($ruta, $extensiones, $excluir) {
+    $archivos = Get-ChildItem -Path $ruta -Recurse -File -Include $extensiones |
+        Where-Object { $_.FullName -notmatch $excluir }
+    $total = 0
+    foreach ($f in $archivos) {
+        $enBloque = $false
+        foreach ($linea in (Get-Content $f.FullName)) {
+            $l = $linea.Trim()
+            if ($enBloque) { if ($l -match '\*/') { $enBloque = $false }; continue }
+            if ($l -eq '' -or $l.StartsWith('//') -or $l.StartsWith('--') -or $l.StartsWith('#')) { continue }
+            if ($l.StartsWith('/*') -or $l.StartsWith('{/*')) { if ($l -notmatch '\*/') { $enBloque = $true }; continue }
+            if ($l.StartsWith('*')) { continue }
+            $total++
+        }
+    }
+    return $total
+}
 
-# 2. Backend
-$backLines = (Get-ChildItem -Path 02_middleware_backend -Recurse -File -Include *.js,*.json,*.yml | Where-Object { $_.FullName -notmatch '\\node_modules\\' }) | Get-Content | Measure-Object -Line
-$back = $backLines.Lines
+$excluir = '\\node_modules\\|\\dist\\|\\artifacts\\|\\cache\\|\\deployments\\'
 
-# 3. Smart Contracts
-$scLines = (Get-ChildItem -Path 01_blockchain_smart_contracts -Recurse -File -Include *.sol,*.js | Where-Object { $_.FullName -notmatch '\\node_modules\\' -and $_.FullName -notmatch '\\artifacts\\' -and $_.FullName -notmatch '\\cache\\' }) | Get-Content | Measure-Object -Line
-$sc = $scLines.Lines
-
-# 4. Base de Datos
-$dbLines = (Get-ChildItem -Path 04_infraestructura_db -Recurse -File -Include *.sql) | Get-Content | Measure-Object -Line
-$db = $dbLines.Lines
+$front = Contar-SLOC '03_frontend_dapp\src' @('*.jsx','*.js','*.css') $excluir
+$back  = Contar-SLOC '02_middleware_backend' @('*.js') ($excluir + '|\\test\\')
+$sc    = Contar-SLOC '01_blockchain_smart_contracts\contracts' @('*.sol') ($excluir + '|\\test\\')
+$db    = Contar-SLOC '04_infraestructura_db' @('*.sql') $excluir
+$prue  = (Contar-SLOC '01_blockchain_smart_contracts\test' @('*.js') $excluir) + (Contar-SLOC '02_middleware_backend\test' @('*.js') $excluir)
 
 $total = $front + $back + $sc + $db
-$ksloc = [math]::Round($total / 1000, 2)
-
-Write-Host ""
-Write-Host "[+] 1. Frontend dApp (React/Vite)    : $front lineas" -ForegroundColor Yellow
-Write-Host "[+] 2. Middleware Backend (Node.js)  : $back lineas" -ForegroundColor Green
-Write-Host "[+] 3. Smart Contracts (Solidity)    : $sc lineas" -ForegroundColor Magenta
-Write-Host "[+] 4. Base de Datos (PostgreSQL)    : $db lineas" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "---------------------------------------------------" -ForegroundColor Cyan
-Write-Host " TOTAL LINEAS DE CODIGO (KSLOC)      : $total ($ksloc KSLOC)" -ForegroundColor White -BackgroundColor DarkBlue
-Write-Host "===================================================" -ForegroundColor Cyan
-Write-Host ""
+Write-Host "Frontend (React/Vite)      : $front SLOC"
+Write-Host "Servidor intermedio (Node) : $back SLOC"
+Write-Host "Contratos (Solidity)       : $sc SLOC"
+Write-Host "Base de datos (SQL)        : $db SLOC"
+Write-Host "---------------------------------------------"
+Write-Host ("TOTAL PRODUCTO             : {0} SLOC ({1:N2} KSLOC)" -f $total, ($total / 1000))
+Write-Host "Pruebas (no se incluyen)   : $prue SLOC"

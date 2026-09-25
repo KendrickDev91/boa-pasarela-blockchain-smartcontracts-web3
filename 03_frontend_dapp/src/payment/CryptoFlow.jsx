@@ -7,7 +7,7 @@ import { FadeIn, DrawnCheck } from './PaymentChrome.jsx';
 import PrintableTicket from './PrintableTicket.jsx';
 import { api } from '../services/api.js';
 import { ethers } from 'ethers';
-import { BOA_PAYMENTS_ADDRESS, BOA_PAYMENTS_ABI, USDT_TOKEN_ADDRESS, ERC20_ABI } from '../constants/contracts.js';
+import { BOA_PAYMENTS_ADDRESS, BOA_PAYMENTS_ABI, USDT_TOKEN_ADDRESS, ERC20_ABI, CHAIN_ID, RPC_URL } from '../constants/contracts.js';
 
 const tieneMetaMask = () => !!window.ethereum;
 const explorerTxUrl = (chainId, txHash) => txHash ? `/explorer/tx/${txHash}` : null;
@@ -50,7 +50,7 @@ const CryptoPick = ({ onPick, onBack }) => (
       <i className="ri-shield-check-line" style={{ color: '#006DB2', fontSize: 18, flexShrink: 0, marginTop: 1 }}></i>
       <span>
         BoA acepta pago con criptoactivos como canal complementario.
-        El cobro se procesa vía <strong>smart contract auditado</strong>; el equivalente en USD se liquida automáticamente al confirmar la transacción on-chain. <a href="#" style={{ color: '#006DB2', fontWeight: 700 }}>¿Cómo funciona?</a>
+        El cobro se procesa mediante un <strong>contrato inteligente verificable</strong>; los fondos se transfieren directamente a la tesorería de BoA al confirmarse la transacción. <a href="#" style={{ color: '#006DB2', fontWeight: 700 }}>¿Cómo funciona?</a>
       </span>
     </div>
 
@@ -94,16 +94,14 @@ const CryptoPick = ({ onPick, onBack }) => (
   </div>
 );
 
-const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT, backendDisponible, onBack, onSuccess }) => {
+const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT, cotizacion, backendDisponible, onBack, onSuccess }) => {
   const c = CRYPTOS.find(x => x.sym === symbol);
-  const real = backendDisponible && !!pnr;
+  const real = backendDisponible && !!pnr && !!cotizacion?.montoUnidades;
   const [status, setStatus] = useState('waiting'); // waiting | confirming | confirmed
-  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [walletMsg, setWalletMsg] = useState('');
   const [error, setError] = useState('');
   const [chain, setChain] = useState(null); // { chainId, contracts, tesoreria, decimals }
-  const [qrMode, setQrMode] = useState('web3'); // 'web3' | 'binance'
   const [exchangeRate, setExchangeRate] = useState(null);
   const esRef = useRef(null);
 
@@ -117,26 +115,23 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
       .catch(console.error);
   }, []);
 
-  const rateToUse = exchangeRate || 10.00;
-  
-  // Mejores prácticas Web3: Siempre redondear Hacia Arriba (Ceil) a 2 decimales.
-  // Esto garantiza que la aerolínea nunca reciba menos dinero por pérdida de precisión fraccional.
-  const cryptoAmountNum = Math.ceil((totalBob / rateToUse) * 100) / 100;
-  const usd = cryptoAmountNum.toFixed(2);
-  const cryptoAmount = cryptoAmountNum.toFixed(2);
-  const ADDRESS = direccionPago || BOA_PAYMENTS_ADDRESS;
+  // La cotización la fija el servidor intermedio (POST /api/reservas) y queda registrada on-chain
+  // con registrarTarifa; el frontend solo la muestra. Sin backend, el monto es solo ilustrativo.
+  const rateToUse = cotizacion?.tipoCambio || exchangeRate;
+  const cryptoAmount = cotizacion?.montoStablecoin
+    ?? (rateToUse ? (Math.ceil((totalBob / rateToUse) * 100) / 100).toFixed(2) : '—');
+  const usd = cryptoAmount;
+  const ADDRESS = cotizacion?.contrato || BOA_PAYMENTS_ADDRESS;
 
-  // Info de cadena (token USDT + chainId) para armar el QR EIP-681.
   useEffect(() => {
     if (!real) return;
     api.chainInfo().then(setChain).catch(() => {});
   }, [real]);
 
-  // QR EIP-681 real y escaneable (MetaMask) o dirección plana (Binance)
-  const amountUnits = Math.round(Number(cryptoAmount) * 1e6); // USDT = 6 decimales
-  const qrValue = qrMode === 'web3' && chain?.contracts?.MockUSDT
-    ? `ethereum:${chain.contracts.MockUSDT}@${chain.chainId}/transfer?address=${ADDRESS}&uint256=${amountUnits}`
-    : ADDRESS;
+  // QR: enlace profundo que abre esta misma pantalla de pago en el navegador de MetaMask Mobile,
+  // donde el pasajero firma approve + pagarBoleto. No se codifica una transferencia directa:
+  // un envío simple de USDT no invoca al contrato ni queda asociado al PNR.
+  const qrValue = `https://metamask.app.link/dapp/${window.location.host}${window.location.pathname}?pnr=${pnr || ''}`;
   const sinMetamask = !tieneMetaMask();
 
   // Confirmación por PUSH (SSE) + Sincronización Activa (Polling)
@@ -189,7 +184,7 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
         if (!res.ok) return;
         const data = await res.json();
         
-        if (data.success && (data.data.estado_emision === 'CONFIRMADO' || data.data.tx_hash)) {
+        if (data.success && data.data.estado_pago === 'CONFIRMADO') {
           setStatus('confirmed');
           clearInterval(interval);
           if (es) es.close();
@@ -212,16 +207,6 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
       clearInterval(interval);
     };
   }, [real, pnr, chain]);
-
-  const procesarManual = async () => {
-    setError(''); setBusy(true); setStatus('confirming');
-    try {
-      await api.procesarPago(pnr);
-      // No marcamos 'confirmado' aquí: esperamos el push verificado por webhook (SSE).
-    } catch (e) {
-      setError(e.message || 'No se pudo procesar el pago'); setStatus('waiting'); setBusy(false);
-    }
-  };
 
   // Función auxiliar para esquivar completamente el bug de Promesas Proxy de MetaMask/Vite
   // utilizando el método basado en callbacks (sendAsync) que no devuelve Promesas corruptas.
@@ -261,45 +246,55 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
       if (!accounts || accounts.length === 0) throw new Error("Se requiere seleccionar una cuenta para operar");
       const userAddress = accounts[0];
       
-      const montoFormateado = ethers.parseUnits(cryptoAmount.toString(), 6);
-      
-      // 2. Chequeo de saldo (solo lectura)
-      const readProvider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
-      const usdtContract = new ethers.Contract(USDT_TOKEN_ADDRESS, ERC20_ABI, readProvider);
-      
-      const balance = await usdtContract.balanceOf(userAddress);
-      if (balance < montoFormateado) {
-        throw new Error(`Se requiere saldo adicional para completar la transacción`);
+      // Importe exacto registrado on-chain para este PNR (unidades mínimas, 6 decimales)
+      const montoUnidades = BigInt(cotizacion.montoUnidades);
+
+      // 2. Verificar que la billetera esté en la red del contrato
+      const chainHex = await callMetaMask(ethProvider, 'eth_chainId');
+      if (Number(chainHex) !== CHAIN_ID) {
+        await callMetaMask(ethProvider, 'wallet_switchEthereumChain', [{ chainId: '0x' + CHAIN_ID.toString(16) }]);
       }
 
-      setWalletMsg('1/2 Aprobando USDT');
-      const ifaceUSDT = new ethers.Interface(ERC20_ABI);
-      const dataApprove = ifaceUSDT.encodeFunctionData("approve", [BOA_PAYMENTS_ADDRESS, montoFormateado]);
-      
-      // 3. Aprobar USDT usando callbacks
-      await callMetaMask(ethProvider, 'eth_sendTransaction', [{ from: userAddress, to: USDT_TOKEN_ADDRESS, data: dataApprove }]);
-      
-      await new Promise(r => setTimeout(r, 2000));
-      
-      setWalletMsg('2/2 Confirmando en Blockchain');
-      const ifaceBoA = new ethers.Interface(BOA_PAYMENTS_ABI);
-      const dataPago = ifaceBoA.encodeFunctionData("pagarBoletaWeb3", [pnr, montoFormateado]);
+      // 3. Chequeo de saldo (solo lectura)
+      const readProvider = new ethers.JsonRpcProvider(RPC_URL);
+      const usdtContract = new ethers.Contract(USDT_TOKEN_ADDRESS, ERC20_ABI, readProvider);
+      if ((await usdtContract.balanceOf(userAddress)) < montoUnidades) {
+        throw new Error('Saldo de USDT insuficiente para completar la transacción');
+      }
 
-      // 4. Pagar usando callbacks
-      await callMetaMask(ethProvider, 'eth_sendTransaction', [{ from: userAddress, to: BOA_PAYMENTS_ADDRESS, data: dataPago }]);
-      
+      // Espera la confirmación de cada transacción antes de continuar
+      const esperarRecibo = async (hash) => {
+        for (let i = 0; i < 120; i++) {
+          const recibo = await readProvider.getTransactionReceipt(hash);
+          if (recibo) {
+            if (recibo.status !== 1) throw new Error('La transacción fue revertida por la red');
+            return recibo;
+          }
+          await new Promise(r => setTimeout(r, 1500));
+        }
+        throw new Error('Tiempo de espera agotado al confirmar la transacción');
+      };
+
+      // 4. Firma 1/2: autorización de gasto (approve) por el importe exacto
+      setWalletMsg('1/2 Autorizando el gasto de USDT');
+      const ifaceUSDT = new ethers.Interface(ERC20_ABI);
+      const dataApprove = ifaceUSDT.encodeFunctionData('approve', [ADDRESS, montoUnidades]);
+      const hashApprove = await callMetaMask(ethProvider, 'eth_sendTransaction', [{ from: userAddress, to: USDT_TOKEN_ADDRESS, data: dataApprove }]);
+      await esperarRecibo(hashApprove);
+
+      // 5. Firma 2/2: pago (el contrato toma el importe de la tarifa registrada)
+      setWalletMsg('2/2 Confirmando el pago en la red');
+      const ifaceBoA = new ethers.Interface(BOA_PAYMENTS_ABI);
+      const dataPago = ifaceBoA.encodeFunctionData('pagarBoleto', [pnr]);
+      const hashPago = await callMetaMask(ethProvider, 'eth_sendTransaction', [{ from: userAddress, to: ADDRESS, data: dataPago }]);
+      await esperarRecibo(hashPago);
+
       setWalletMsg(''); setStatus('confirming');
     } catch (e) {
       console.error("Operación detenida:", e);
       setWalletMsg(''); setBusy(false);
       setError(e?.message || 'Operación detenida en la billetera');
     }
-  };
-
-  const copyAddr = () => {
-    if (navigator.clipboard) navigator.clipboard.writeText(ADDRESS);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   };
 
   const [payMethod, setPayMethod] = useState(null); // 'mobile' | 'extension' | null
@@ -339,15 +334,8 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
       <div className="crypto-checkout-grid">
         {/* Columna Izquierda: QR Code */}
         <div style={{ animation: 'qrFadeIn .4s cubic-bezier(.16,1,.3,1) both', width: '100%', maxWidth: 260 }}>
-          <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
-            <button onClick={() => setQrMode('web3')} style={{
-              flex: 1, padding: '8px 4px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: 'none', cursor: 'pointer',
-              background: qrMode === 'web3' ? '#00306F' : '#F3F4F6', color: qrMode === 'web3' ? '#fff' : '#6C767A', transition: 'all .2s'
-            }}>QR para Web3 (MetaMask)</button>
-            <button onClick={() => setQrMode('binance')} style={{
-              flex: 1, padding: '8px 4px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: 'none', cursor: 'pointer',
-              background: qrMode === 'binance' ? '#00306F' : '#F3F4F6', color: qrMode === 'binance' ? '#fff' : '#6C767A', transition: 'all .2s'
-            }}>QR para Exchanges</button>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#00306F', textAlign: 'center', marginBottom: 12 }}>
+            Abrir este pago en MetaMask Mobile
           </div>
           <div style={{
             padding: 18, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, position: 'relative',
@@ -361,7 +349,7 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
             )}
           </div>
           <div style={{ textAlign: 'center', fontSize: 11, color: '#6C767A', marginTop: 12 }}>
-            <i className="ri-qr-scan-2-line"></i> Escanea con tu wallet
+            <i className="ri-qr-scan-2-line"></i> Escanea con la cámara del teléfono
           </div>
         </div>
 
@@ -401,22 +389,15 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
           </div>
 
           <div style={{ fontSize: 11, fontWeight: 700, color: '#6C767A', textTransform: 'uppercase', letterSpacing: '.08em', marginTop: 18 }}>
-            Dirección de cobro · tesorería BoA (Polygon)
+            Contrato de cobro BoAPayments (Polygon)
           </div>
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px',
-            background: '#F9F9F9', border: '1px solid #E5E7EB', borderRadius: 6, marginTop: 4,
+            padding: '8px 10px', background: '#F9F9F9', border: '1px solid #E5E7EB', borderRadius: 6, marginTop: 4,
           }}>
-            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: '#1D2429', wordBreak: 'break-all', flex: 1 }}>{ADDRESS}</span>
-            <button onClick={copyAddr} style={{
-              background: copied ? '#00A95C' : '#00306F', color: '#fff', border: 'none',
-              padding: '6px 10px', borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-              whiteSpace: 'nowrap', transition: 'background .25s', minWidth: 78,
-              display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'center',
-            }}>
-              <i className={copied ? 'ri-check-line' : 'ri-file-copy-line'}></i>
-              {copied ? 'Copiado' : 'Copiar'}
-            </button>
+            <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: '#1D2429', wordBreak: 'break-all' }}>{ADDRESS}</span>
+          </div>
+          <div style={{ fontSize: 11, color: '#B45309', marginTop: 6, lineHeight: 1.4 }}>
+            No envíe USDT directamente a esta dirección: el pago solo es válido si se firma desde el botón de pago, que asocia la transacción a su reserva.
           </div>
 
           <div style={{ marginTop: 24 }}>
@@ -476,7 +457,7 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
       }}>
         <i className="ri-checkbox-circle-fill" style={{ color: '#0284C7', fontSize: 16, flexShrink: 0, marginTop: 1 }}></i>
         <div>
-          <strong style={{ color: '#0F172A' }}>100% Compatible:</strong> Escanea este QR directamente desde Binance, Bybit, Takenos, Meru, Wallbit, Airtm, MetaMask o tu billetera favorita.
+          <strong style={{ color: '#0F172A' }}>Billeteras compatibles:</strong> billeteras de autocustodia con soporte para Polygon (MetaMask). Los retiros directos desde exchanges (Binance, Bybit y otros) no son compatibles, porque no pueden invocar el contrato de cobro.
         </div>
       </div>
     </FadeIn>
@@ -556,7 +537,7 @@ const CryptoSuccess = ({ symbol, totalBob = 933, txInfo, passenger, route, onRes
   );
 };
 
-export default function CryptoCheckoutFlow({ totalBob = 933, pnr, direccionPago, montoUSDT, backendDisponible = false, onBack, passenger, route, onReset }) {
+export default function CryptoCheckoutFlow({ totalBob = 933, pnr, direccionPago, montoUSDT, cotizacion, backendDisponible = false, onBack, passenger, route, onReset }) {
   const [phase, setPhase] = useState('pick');
   const [symbol, setSymbol] = useState(null);
   const [txInfo, setTxInfo] = useState(null);
@@ -572,7 +553,7 @@ export default function CryptoCheckoutFlow({ totalBob = 933, pnr, direccionPago,
       {phase === 'checkout' && symbol && (
         <CryptoCheckout
           symbol={symbol} totalBob={totalBob}
-          pnr={pnr} direccionPago={direccionPago} montoUSDT={montoUSDT} backendDisponible={backendDisponible}
+          pnr={pnr} direccionPago={direccionPago} montoUSDT={montoUSDT} cotizacion={cotizacion} backendDisponible={backendDisponible}
           onBack={() => { setPhase('pick'); setSymbol(null); }}
           onSuccess={(info) => { setTxInfo(info); setPhase('success'); }}/>
       )}

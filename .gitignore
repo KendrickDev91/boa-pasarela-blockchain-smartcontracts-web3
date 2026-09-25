@@ -30,3 +30,10 @@ Thumbs.db
 # Logs
 logs
 *.log
+
+# Reportes generados
+**/coverage/
+**/coverage.json
+# Direcciones de despliegues locales (cambian en cada reinicio del nodo)
+**/deployments/localhost.json
+**/deployments/hardhat.json

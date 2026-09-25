@@ -1,33 +1,29 @@
 const { ethers } = require('ethers');
-require('dotenv').config();
+const config = require('../config');
 
 // =========================================================
-// CONFIGURACIÓN WEB3 Y SMART CONTRACT (HTTP JSON-RPC)
+// Acceso a la cadena mediante JSON-RPC (ethers v6)
+// - provider: lectura del estado y de los eventos
+// - operador: firma de registrarTarifa (NonceManager evita colisiones de nonce)
 // =========================================================
-const RPC_URL = process.env.RPC_URL || 'http://127.0.0.1:8545';
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0';
-
-const CONTRACT_ABI = [
-    "event PagoConfirmado(address indexed cliente, string pnr, uint256 monto, uint256 timestamp)"
+const BOA_PAYMENTS_ABI = [
+    'function registrarTarifa(string pnr, uint256 monto, uint64 venceEn)',
+    'function pagarBoleto(string pnr)',
+    'function verificarPago(string pnr) view returns (bool)',
+    'function consultarTarifa(string pnr) view returns (uint256 monto, uint64 venceEn)',
+    'function billeteraRecaudadora() view returns (address)',
+    'event TarifaRegistrada(string pnr, uint256 monto, uint64 venceEn)',
+    'event PagoConfirmado(address indexed cliente, string pnr, uint256 monto, uint256 timestamp)',
 ];
 
-class Web3Manager {
-    constructor() {
-        this.provider = null;
-        this.contract = null;
-    }
+const network = ethers.Network.from(config.chain.chainId);
+// cacheTimeout: -1 -> sin caché del número de bloque (el listener necesita la cabeza real)
+const provider = new ethers.JsonRpcProvider(config.chain.rpcUrl, network, { staticNetwork: network, cacheTimeout: -1 });
+const operador = new ethers.NonceManager(new ethers.Wallet(config.chain.operatorKey, provider));
 
-    connect() {
-        console.log(`[WEB3] Conectando vía JSON-RPC a ${RPC_URL}...`);
-        this.provider = new ethers.JsonRpcProvider(RPC_URL);
-        this.contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, this.provider);
-        return this.contract;
-    }
-
-    getProvider() {
-        return this.provider;
-    }
+function contrato(signerOrProvider = provider) {
+    if (!config.chain.contractAddress) throw new Error('CONTRACT_ADDRESS no está configurado');
+    return new ethers.Contract(config.chain.contractAddress, BOA_PAYMENTS_ABI, signerOrProvider);
 }
 
-const web3Manager = new Web3Manager();
-module.exports = web3Manager;
+module.exports = { provider, operador, contrato, BOA_PAYMENTS_ABI };

@@ -86,9 +86,9 @@ export default function BlockchainExplorer() {
         
         {/* Encabezado Principal */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 30 }}>
-          <img src={polygonLogo} alt="PolygonScan" style={{ height: 40, objectFit: 'contain' }} />
+          <img src={polygonLogo} alt="Red Polygon" style={{ height: 40, objectFit: 'contain' }} />
           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: '#111827', letterSpacing: '-0.02em' }}>
-            PolygonScan
+            Explorador de transacciones BoA
           </h1>
         </div>
 
@@ -211,7 +211,7 @@ export default function BlockchainExplorer() {
             </DataRow>
 
             <DataRow label="Tarifa de Red (Gas)" isLast>
-              <span>0.00109 MATIC</span>
+              <span>{txData.gas_pagado ? `${Number(txData.gas_pagado).toFixed(6)} POL` : 'N/A'}</span>
             </DataRow>
 
           </div>
@@ -229,8 +229,8 @@ export default function BlockchainExplorer() {
           color: '#6C767A',
           background: '#F9FAFB',
         }}>
-          <div>PolygonScan © 2026 | Built by Team Polygon</div>
-          <div>Powered by Polygon PoS Chain</div>
+          <div>Explorador interno del prototipo · datos del registro de auditoría de BoA</div>
+          <div>Verificación pública: explorador oficial de la red configurada</div>
         </div>
 
       </div>

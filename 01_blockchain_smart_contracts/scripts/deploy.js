@@ -1,49 +1,69 @@
 const hre = require("hardhat");
+const fs = require("fs");
+const path = require("path");
 
+// Variables opcionales (.env):
+//   USDT_ADDRESS        -> token ya desplegado (si no se indica, se despliega MockUSDT)
+//   TREASURY_ADDRESS    -> billetera recaudadora de BoA: billetera fría (hardware wallet) que recibe los fondos
+//   OWNER_ADDRESS       -> billetera fría propietaria del contrato (funciones administrativas); al terminar
+//                          el despliegue se le transfiere la propiedad y la cuenta de despliegue deja de tener control
+//   OPERATOR_ADDRESS    -> cuenta en línea del servidor intermedio: solo registra tarifas, no puede mover fondos
+// Si no se indican, se usa la cuenta de despliegue (válido solo para la red local).
 async function main() {
-  console.log("=================================================");
-  console.log("Iniciando el despliegue del Ecosistema BoA Web3");
-  console.log("=================================================");
-
   const [deployer] = await hre.ethers.getSigners();
-  console.log(`\nCuenta de despliegue (Deployer): ${deployer.address}`);
+  const red = hre.network.name;
+  const { chainId } = await hre.ethers.provider.getNetwork();
 
-  const balance = await hre.ethers.provider.getBalance(deployer.address);
-  console.log(`Balance inicial de la cuenta: ${hre.ethers.formatEther(balance)} MATIC (POL)`);
+  console.log(`Red: ${red} (chainId ${chainId})`);
+  console.log(`Cuenta de despliegue: ${deployer.address}`);
+  console.log(`Saldo: ${hre.ethers.formatEther(await hre.ethers.provider.getBalance(deployer.address))} POL`);
 
-  // 1. DESPLEGAR EL TOKEN SIMULADO (MockUSDT)
-  console.log("\n1. Desplegando MockUSDT (Token de pruebas)...");
-  const MockUSDT = await hre.ethers.getContractFactory("MockUSDT");
-  const mockUSDT = await MockUSDT.deploy();
-  await mockUSDT.waitForDeployment();
-  const usdtAddress = await mockUSDT.getAddress();
-  console.log(`=> MockUSDT desplegado exitosamente en: ${usdtAddress}`);
+  let usdtAddress = process.env.USDT_ADDRESS;
+  if (!usdtAddress) {
+    const mock = await (await hre.ethers.getContractFactory("MockUSDT")).deploy();
+    await mock.waitForDeployment();
+    usdtAddress = await mock.getAddress();
+    console.log(`MockUSDT (token de prueba ERC-20, 6 decimales): ${usdtAddress}`);
+  }
 
-  // 2. DESPLEGAR LA PASARELA DE PAGOS (BoAPayments)
-  console.log("\n2. Desplegando Pasarela BoAPayments...");
-  const walletRecaudadoraBoA = deployer.address;
-  const BoAPayments = await hre.ethers.getContractFactory("BoAPayments");
-  
-  // Le inyectamos la dirección real del MockUSDT recién creado
-  const boaPayments = await BoAPayments.deploy(usdtAddress, walletRecaudadoraBoA);
-  await boaPayments.waitForDeployment();
-  const contractAddress = await boaPayments.getAddress();
-  console.log(`=> BoAPayments desplegado exitosamente en: ${contractAddress}`);
+  const tesoreria = process.env.TREASURY_ADDRESS || deployer.address;
+  const operador = process.env.OPERATOR_ADDRESS || deployer.address;
 
-  console.log("\n=================================================");
-  console.log("✅ DESPLIEGUE EXITOSO COMPLETADO");
-  console.log("=================================================");
-  console.log("⚠️ INSTRUCCIONES POST-DESPLIEGUE:");
-  console.log(`Copia y actualiza estas direcciones en tu archivo frontend/src/constants/contracts.js:\n`);
-  console.log(`export const BOA_PAYMENTS_ADDRESS = "${contractAddress}";`);
-  console.log(`export const USDT_TOKEN_ADDRESS = "${usdtAddress}";\n`);
-  
-  console.log(`Y en tu archivo backend/.env actualiza:\n`);
-  console.log(`CONTRACT_ADDRESS=${contractAddress}`);
-  console.log("=================================================\n");
+  const boa = await (await hre.ethers.getContractFactory("BoAPayments")).deploy(usdtAddress, tesoreria, operador);
+  await boa.waitForDeployment();
+  const receipt = await boa.deploymentTransaction().wait();
+
+  // Custodia en frío: la propiedad administrativa pasa a la billetera fría de BoA
+  const propietario = process.env.OWNER_ADDRESS || deployer.address;
+  if (propietario.toLowerCase() !== deployer.address.toLowerCase()) {
+    await (await boa.transferOwnership(propietario)).wait();
+    console.log(`Propiedad del contrato transferida a la billetera fría: ${propietario}`);
+  }
+
+  const salida = {
+    red,
+    chainId: Number(chainId),
+    BoAPayments: await boa.getAddress(),
+    token: usdtAddress,
+    tesoreria,
+    propietario,
+    operador,
+    bloqueDespliegue: receipt.blockNumber,
+    fecha: new Date().toISOString(),
+  };
+
+  const dir = path.join(__dirname, "..", "deployments");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${red}.json`), JSON.stringify(salida, null, 2));
+
+  console.log("\nDespliegue completado:", salida);
+  console.log("\nActualice en 02_middleware_backend/.env:");
+  console.log(`CONTRACT_ADDRESS=${salida.BoAPayments}\nTOKEN_ADDRESS=${salida.token}\nCHAIN_ID=${salida.chainId}\nDEPLOY_BLOCK=${salida.bloqueDespliegue}`);
+  console.log("Y en 03_frontend_dapp/.env:");
+  console.log(`VITE_BOA_PAYMENTS_ADDRESS=${salida.BoAPayments}\nVITE_USDT_ADDRESS=${salida.token}\nVITE_CHAIN_ID=${salida.chainId}`);
 }
 
 main().catch((error) => {
-  console.error("\n[ERROR CRÍTICO] Ocurrió un fallo durante el despliegue:", error);
+  console.error("Fallo durante el despliegue:", error);
   process.exitCode = 1;
 });

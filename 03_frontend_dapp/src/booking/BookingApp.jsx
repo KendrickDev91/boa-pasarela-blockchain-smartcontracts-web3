@@ -102,20 +102,18 @@ export default function BookingApp() {
         const r = await api.crearReserva({
           origen: route.origin, destino: route.dest,
           fechaIda: route.depart, fechaVuelta: route.ret, pax: route.pax,
-          montoFiat: totalUSDT,
+          montoBob: total,
           pasajero: {
             ci: passenger.docNum, nombre: passenger.firstName,
             apellido: passenger.lastName, correo: passenger.email,
           },
         });
-        if (!cancel) { 
-            // Inyectamos valores por defecto si el backend solo responde { success: true }
-            setReserva({
-                pnr: r.pnr || Math.random().toString(36).substring(2, 8).toUpperCase(),
-                montoStablecoin: r.montoStablecoin || totalUSDT,
-                direccionBoa: r.direccionBoa || '0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512' // BOA_PAYMENTS_ADDRESS
-            }); 
-            setBackendOk(true); 
+        if (!cancel) {
+            // El servidor intermedio (núcleo simulado) genera el PNR, convierte la tarifa al
+            // tipo de cambio oficial y la registra on-chain: esa cotización es la única válida.
+            if (!r.pnr || !r.montoUnidades) throw new Error('Respuesta de reserva incompleta');
+            setReserva(r);
+            setBackendOk(true);
         }
       } catch (error) {
         if (!cancel) setBackendOk(false); // backend no disponible → modo offline
@@ -272,7 +270,8 @@ function BookingContent({ step, setStep, tripType, route, outbound, returnFlight
                 totalBob={total}
                 pnr={reserva?.pnr}
                 direccionPago={reserva?.direccionBoa}
-                montoUSDT={reserva?.montoStablecoin ?? (total / 10.00).toFixed(2)}
+                montoUSDT={reserva?.montoStablecoin}
+                cotizacion={reserva}
                 backendDisponible={backendOk}
                 passenger={passenger}
                 route={route}

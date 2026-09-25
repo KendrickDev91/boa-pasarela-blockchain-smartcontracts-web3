@@ -36,8 +36,8 @@ const PaymentGateway = () => {
   // LÓGICA DE PAGO WEB3
   // ==========================================
   const handlePayment = async () => {
-    if (!pnr || !monto) {
-      setErrorMessage("El PNR y el monto son obligatorios.");
+    if (!pnr) {
+      setErrorMessage("El PNR es obligatorio.");
       return;
     }
 
@@ -48,11 +48,14 @@ const PaymentGateway = () => {
       // Instanciar proveedor y signer (usuario activo)
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
+      const boaContract = new ethers.Contract(BOA_PAYMENTS_ADDRESS, BOA_PAYMENTS_ABI, signer);
 
-      // Formatear monto (USDT usa 6 decimales convencionalmente)
-      const montoFormateado = ethers.parseUnits(monto, 6);
+      // El importe lo fija el contrato (tarifa registrada por el servidor intermedio para el PNR)
+      const [montoFormateado] = await boaContract.consultarTarifa(pnr);
+      if (montoFormateado === 0n) throw new Error('El PNR no tiene una tarifa registrada');
+      setMonto(ethers.formatUnits(montoFormateado, 6));
 
-      // 1. APROBAR GASTO DE USDT
+      // 1. APROBAR GASTO DE USDT por el importe exacto
       const usdtContract = new ethers.Contract(USDT_TOKEN_ADDRESS, ERC20_ABI, signer);
       const txAprobacion = await usdtContract.approve(BOA_PAYMENTS_ADDRESS, montoFormateado);
       await txAprobacion.wait(); // Esperamos que la transacción se mine
@@ -60,8 +63,7 @@ const PaymentGateway = () => {
       setStatus('PENDING');
 
       // 2. EJECUTAR EL PAGO EN EL SMART CONTRACT DE BOA
-      const boaContract = new ethers.Contract(BOA_PAYMENTS_ADDRESS, BOA_PAYMENTS_ABI, signer);
-      const txPago = await boaContract.pagarBoletaWeb3(pnr, montoFormateado);
+      const txPago = await boaContract.pagarBoleto(pnr);
 
       // Esperamos confirmación de bloque
       await txPago.wait();

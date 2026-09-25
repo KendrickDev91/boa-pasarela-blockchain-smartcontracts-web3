@@ -1,124 +1,165 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
-describe("BoAPayments - Pruebas de Seguridad y Validaciones (Quinto Incremento)", function () {
-    let boaPayments;
-    let mockUSDT;
-    let maliciousToken;
-    let owner;
-    let walletRecaudadora;
-    let pasajero;
-    let atacante;
+describe("BoAPayments - Pruebas unitarias (Tabla 23)", function () {
+    let boaPayments, mockUSDT;
+    let owner, recaudadora, operador, pasajero, atacante;
 
     const PNR = "HJ3UVJ";
-    const MONTO = ethers.parseUnits("100", 6); // 100 USDT
+    const MONTO = ethers.parseUnits("86.72", 6); // 953.05 Bs / 10.99
+    const QUINCE_MIN = 15 * 60;
+
+    async function vence(seg = QUINCE_MIN) {
+        return BigInt((await time.latest()) + seg);
+    }
 
     beforeEach(async function () {
-        [owner, walletRecaudadora, pasajero, atacante] = await ethers.getSigners();
+        [owner, recaudadora, operador, pasajero, atacante] = await ethers.getSigners();
 
-        // 1. Desplegar MockUSDT
-        const MockUSDT = await ethers.getContractFactory("MockUSDT");
-        mockUSDT = await MockUSDT.deploy();
+        mockUSDT = await (await ethers.getContractFactory("MockUSDT")).deploy();
+        boaPayments = await (await ethers.getContractFactory("BoAPayments"))
+            .deploy(await mockUSDT.getAddress(), recaudadora.address, operador.address);
 
-        // 2. Desplegar BoAPayments apuntando al MockUSDT
-        const BoAPayments = await ethers.getContractFactory("BoAPayments");
-        boaPayments = await BoAPayments.deploy(await mockUSDT.getAddress(), walletRecaudadora.address);
-
-        // Fondeamos al pasajero con USDT y aprobamos al contrato
         await mockUSDT.connect(pasajero).faucet();
-        await mockUSDT.connect(pasajero).approve(await boaPayments.getAddress(), ethers.MaxUint256);
+        await mockUSDT.connect(atacante).faucet();
     });
 
-    it("CU-01: Pago exitoso en USDT - Transfiere el monto exacto, registra PNR y emite el evento PagoConfirmado", async function () {
-        const balanceInicialRecaudadora = await mockUSDT.balanceOf(walletRecaudadora.address);
+    async function registrar(pnr = PNR, monto = MONTO) {
+        await boaPayments.connect(operador).registrarTarifa(pnr, monto, await vence());
+    }
 
-        // Ejecutar pago
-        const tx = await boaPayments.connect(pasajero).pagarBoletaWeb3(PNR, MONTO);
+    it("CU-01: Pago exitoso - transfiere la tarifa registrada, marca el PNR y emite PagoConfirmado", async function () {
+        await registrar();
+        await mockUSDT.connect(pasajero).approve(await boaPayments.getAddress(), MONTO);
 
-        // Verificar balance de la wallet recaudadora
-        const balanceFinalRecaudadora = await mockUSDT.balanceOf(walletRecaudadora.address);
-        expect(balanceFinalRecaudadora - balanceInicialRecaudadora).to.equal(MONTO);
+        const antes = await mockUSDT.balanceOf(recaudadora.address);
+        const tx = await boaPayments.connect(pasajero).pagarBoleto(PNR);
+        const bloque = await ethers.provider.getBlock((await tx.wait()).blockNumber);
 
-        // Verificar registro inmutable (idempotencia)
-        const pnrPagado = await boaPayments.pnrPagados(PNR);
-        expect(pnrPagado).to.be.true;
-
-        // Verificar emisión del evento esperado por el middleware
-        const txReceipt = await tx.wait();
-        const block = await ethers.provider.getBlock(txReceipt.blockNumber);
-        
-        await expect(tx)
-            .to.emit(boaPayments, "PagoConfirmado")
-            .withArgs(pasajero.address, PNR, MONTO, block.timestamp);
+        expect(await mockUSDT.balanceOf(recaudadora.address) - antes).to.equal(MONTO);
+        expect(await boaPayments.verificarPago(PNR)).to.equal(true);
+        await expect(tx).to.emit(boaPayments, "PagoConfirmado")
+            .withArgs(pasajero.address, PNR, MONTO, bloque.timestamp);
     });
 
-    it("CU-02: Rechazo por monto incorrecto - La transacción revierte si el monto enviado es 0", async function () {
-        await expect(
-            boaPayments.connect(pasajero).pagarBoletaWeb3("INVALID", 0)
-        ).to.be.revertedWith("El monto debe ser mayor a cero");
+    it("CU-02: Rechazo por monto insuficiente - si la autorización es menor a la tarifa, revierte y el PNR sigue pendiente", async function () {
+        await registrar();
+        await mockUSDT.connect(pasajero).approve(await boaPayments.getAddress(), MONTO - 1n);
+
+        await expect(boaPayments.connect(pasajero).pagarBoleto(PNR))
+            .to.be.revertedWithCustomError(mockUSDT, "ERC20InsufficientAllowance");
+        expect(await boaPayments.verificarPago(PNR)).to.equal(false);
     });
 
-    it("CU-03: Prevencion de reentrada maliciosa - Modificador nonReentrant bloquea llamadas recursivas", async function () {
-        // Desplegamos el token malicioso
-        const MaliciousToken = await ethers.getContractFactory("MaliciousToken");
-        maliciousToken = await MaliciousToken.deploy();
+    it("CU-03: Prevención de reentrada - nonReentrant bloquea la llamada recursiva desde el token", async function () {
+        const mal = await (await ethers.getContractFactory("MaliciousToken")).deploy();
+        const vulnerable = await (await ethers.getContractFactory("BoAPayments"))
+            .deploy(await mal.getAddress(), recaudadora.address, operador.address);
 
-        // Desplegamos una instancia vulnerable de BoAPayments apuntando al token malicioso
-        const BoAPaymentsVulnerable = await ethers.getContractFactory("BoAPayments");
-        const vulnerablePayments = await BoAPaymentsVulnerable.deploy(await maliciousToken.getAddress(), walletRecaudadora.address);
+        await vulnerable.connect(operador).registrarTarifa("ATACK1", MONTO, await vence());
+        await mal.transfer(atacante.address, MONTO * 2n);
+        await mal.connect(atacante).approve(await vulnerable.getAddress(), ethers.MaxUint256);
+        await mal.setupAttack(await vulnerable.getAddress(), "ATACK1");
 
-        // Fondeamos al atacante y aprobamos
-        await maliciousToken.transfer(atacante.address, MONTO * 2n);
-        await maliciousToken.connect(atacante).approve(await vulnerablePayments.getAddress(), ethers.MaxUint256);
-
-        // Configuramos el ataque
-        await maliciousToken.connect(atacante).setupAttack(await vulnerablePayments.getAddress(), "ATACK1");
-
-        // Al intentar pagar, el token intentará reentrar a pagarBoletaWeb3
-        // ReentrancyGuard de OpenZeppelin lanza el error personalizado ReentrancyGuardReentrantCall
-        await expect(
-            vulnerablePayments.connect(atacante).pagarBoletaWeb3("ATACK1", MONTO)
-        ).to.be.revertedWithCustomError(vulnerablePayments, "ReentrancyGuardReentrantCall");
+        await expect(vulnerable.connect(atacante).pagarBoleto("ATACK1"))
+            .to.be.revertedWithCustomError(vulnerable, "ReentrancyGuardReentrantCall");
+        expect(await vulnerable.verificarPago("ATACK1")).to.equal(false);
     });
 
-    it("CU-04: Validacion de localizador duplicado - Revierte operacion si el PNR ya esta pagado", async function () {
-        // Primer pago exitoso
-        await boaPayments.connect(pasajero).pagarBoletaWeb3(PNR, MONTO);
-        
-        // Segundo intento de pago con el mismo PNR exacto
-        await expect(
-            boaPayments.connect(pasajero).pagarBoletaWeb3(PNR, MONTO)
-        ).to.be.revertedWith("El PNR ya ha sido pagado");
+    it("CU-04: Localizador duplicado - un segundo pago del mismo PNR revierte con PnrYaPagado", async function () {
+        await registrar();
+        await mockUSDT.connect(pasajero).approve(await boaPayments.getAddress(), MONTO * 2n);
+        await boaPayments.connect(pasajero).pagarBoleto(PNR);
+
+        await expect(boaPayments.connect(pasajero).pagarBoleto(PNR))
+            .to.be.revertedWithCustomError(boaPayments, "PnrYaPagado");
     });
 
-    it("CU-05: Restriccion de funciones administrativas - Solo el owner puede actualizar la wallet recaudadora", async function () {
-        const nuevaWallet = ethers.Wallet.createRandom().address;
+    it("CU-05: Funciones administrativas - solo el propietario actualiza la billetera, el operador y rescata tokens", async function () {
+        const nueva = ethers.Wallet.createRandom().address;
+        await expect(boaPayments.connect(atacante).actualizarBilleteraRecaudadora(nueva))
+            .to.be.revertedWithCustomError(boaPayments, "OwnableUnauthorizedAccount").withArgs(atacante.address);
+        await expect(boaPayments.connect(atacante).actualizarOperador(nueva))
+            .to.be.revertedWithCustomError(boaPayments, "OwnableUnauthorizedAccount");
+        await expect(boaPayments.connect(atacante).rescatarTokens(await mockUSDT.getAddress(), atacante.address, 1))
+            .to.be.revertedWithCustomError(boaPayments, "OwnableUnauthorizedAccount");
 
-        // Un atacante o usuario normal intenta cambiar la wallet
-        await expect(
-            boaPayments.connect(atacante).actualizarWalletRecaudadora(nuevaWallet)
-        ).to.be.revertedWithCustomError(boaPayments, "OwnableUnauthorizedAccount")
-         .withArgs(atacante.address);
-
-        // El Owner legitimo cambia la wallet exitosamente
-        await boaPayments.connect(owner).actualizarWalletRecaudadora(nuevaWallet);
-        expect(await boaPayments.walletRecaudadoraBoA()).to.equal(nuevaWallet);
+        await boaPayments.connect(owner).actualizarBilleteraRecaudadora(nueva);
+        expect(await boaPayments.billeteraRecaudadora()).to.equal(nueva);
     });
 
-    it("CU-06: Validacion de la direccion del token - Descarta pagos con activos no reconocidos", async function () {
-        // El atacante crea su propio "Fake USDT"
-        const FakeUSDT = await ethers.getContractFactory("MockUSDT");
-        const fakeUSDT = await FakeUSDT.deploy();
+    it("CU-06: Token no reconocido - pagar con un token falso no liquida el PNR", async function () {
+        await registrar("FAKE12");
+        const fake = await (await ethers.getContractFactory("MockUSDT")).deploy();
+        await fake.connect(atacante).faucet();
+        await fake.connect(atacante).approve(await boaPayments.getAddress(), ethers.MaxUint256);
 
-        // El atacante se fondea y aprueba a BoAPayments usando SU token falso
-        await fakeUSDT.connect(atacante).faucet();
-        await fakeUSDT.connect(atacante).approve(await boaPayments.getAddress(), ethers.MaxUint256);
+        // El contrato solo opera con el token fijado en el despliegue (immutable)
+        await expect(boaPayments.connect(atacante).pagarBoleto("FAKE12"))
+            .to.be.revertedWithCustomError(mockUSDT, "ERC20InsufficientAllowance");
+        expect(await boaPayments.verificarPago("FAKE12")).to.equal(false);
+    });
 
-        // Si el atacante llama a pagarBoletaWeb3, el contrato internamente ejecuta transferFrom 
-        // pero sobre la direccion del USDT legitimo. Como el atacante no ha dado allowance 
-        // del USDT legitimo, la operacion fallara, descartando el intento de fraude.
-        await expect(
-            boaPayments.connect(atacante).pagarBoletaWeb3("FAKE12", MONTO)
-        ).to.be.revertedWithCustomError(mockUSDT, "ERC20InsufficientAllowance");
+    // ---------- Casos de borde adicionales ----------
+
+    it("CU-07: PNR sin tarifa registrada - no se puede pagar un localizador inexistente", async function () {
+        await mockUSDT.connect(atacante).approve(await boaPayments.getAddress(), ethers.MaxUint256);
+        await expect(boaPayments.connect(atacante).pagarBoleto("NOEXIS"))
+            .to.be.revertedWithCustomError(boaPayments, "PnrSinTarifa");
+    });
+
+    it("CU-08: Cotización vencida - el pago revierte fuera de la ventana de validez", async function () {
+        await registrar();
+        await mockUSDT.connect(pasajero).approve(await boaPayments.getAddress(), MONTO);
+        await time.increase(QUINCE_MIN + 1);
+        await expect(boaPayments.connect(pasajero).pagarBoleto(PNR))
+            .to.be.revertedWithCustomError(boaPayments, "CotizacionVencida");
+    });
+
+    it("CU-09: Solo el operador registra tarifas", async function () {
+        await expect(boaPayments.connect(atacante).registrarTarifa(PNR, 1, await vence()))
+            .to.be.revertedWithCustomError(boaPayments, "SoloOperador");
+    });
+
+    it("CU-10: No se puede re-cotizar un PNR ya pagado", async function () {
+        await registrar();
+        await mockUSDT.connect(pasajero).approve(await boaPayments.getAddress(), MONTO);
+        await boaPayments.connect(pasajero).pagarBoleto(PNR);
+        await expect(boaPayments.connect(operador).registrarTarifa(PNR, 1, await vence()))
+            .to.be.revertedWithCustomError(boaPayments, "PnrYaPagado");
+    });
+
+    it("CU-11: Validación de entradas - PNR vacío o de más de 10 caracteres y monto cero", async function () {
+        await expect(boaPayments.connect(operador).registrarTarifa("", MONTO, await vence()))
+            .to.be.revertedWithCustomError(boaPayments, "PnrInvalido");
+        await expect(boaPayments.connect(operador).registrarTarifa("ABCDEFGHIJK", MONTO, await vence()))
+            .to.be.revertedWithCustomError(boaPayments, "PnrInvalido");
+        await expect(boaPayments.connect(operador).registrarTarifa(PNR, 0, await vence()))
+            .to.be.revertedWithCustomError(boaPayments, "MontoInvalido");
+    });
+
+    it("CU-13: Consultas y rotación del operador - consultarTarifa, verificarPago y actualizarOperador", async function () {
+        await registrar();
+        const [monto, venceEn] = await boaPayments.consultarTarifa(PNR);
+        expect(monto).to.equal(MONTO);
+        expect(venceEn).to.be.greaterThan(BigInt(await time.latest()));
+        expect(await boaPayments.verificarPago(PNR)).to.equal(false);
+
+        await expect(boaPayments.connect(owner).actualizarOperador(atacante.address))
+            .to.emit(boaPayments, "OperadorActualizado").withArgs(operador.address, atacante.address);
+        await expect(boaPayments.connect(operador).registrarTarifa("OTRO01", MONTO, await vence()))
+            .to.be.revertedWithCustomError(boaPayments, "SoloOperador");
+        await expect(boaPayments.connect(owner).actualizarOperador(ethers.ZeroAddress))
+            .to.be.revertedWithCustomError(boaPayments, "DireccionInvalida");
+        await expect(boaPayments.connect(owner).rescatarTokens(await mockUSDT.getAddress(), ethers.ZeroAddress, 1))
+            .to.be.revertedWithCustomError(boaPayments, "DireccionInvalida");
+    });
+
+    it("CU-12: Rescate de tokens enviados por error directamente al contrato", async function () {
+        const enviado = ethers.parseUnits("10", 6);
+        await mockUSDT.connect(pasajero).transfer(await boaPayments.getAddress(), enviado);
+        await boaPayments.connect(owner).rescatarTokens(await mockUSDT.getAddress(), pasajero.address, enviado);
+        expect(await mockUSDT.balanceOf(await boaPayments.getAddress())).to.equal(0);
     });
 });

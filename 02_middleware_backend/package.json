@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test:integracion": "npx artillery run test/load-test.yml --output test/casos_de_prueba_de_integracion_entre_componentes.json && npx artillery report test/casos_de_prueba_de_integracion_entre_componentes.json"
+    "test:integracion": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "test:carga": "npx artillery run test/load-test.yml --output test/reporte_carga.json && npx artillery report test/reporte_carga.json"
   },
   "dependencies": {
     "cors": "^2.8.5",
