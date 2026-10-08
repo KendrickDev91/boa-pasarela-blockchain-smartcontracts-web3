@@ -9,6 +9,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { BOA_PAYMENTS_ADDRESS } from '../constants/contracts.js';
 import boaLogo from '../assets/boa-logo.png';
+import { API_BASE } from '../services/config.js';
 
 const TITLES = {
   dashboard: { t: 'Dashboard',     s: 'Métricas calculadas con los pagos confirmados en la cadena de bloques' },
@@ -154,7 +155,7 @@ const ClientsScreen = () => {
   useEffect(() => {
     const fetchAll = () => {
       const token = localStorage.getItem('boa_admin_token');
-      fetch('http://localhost:3000/api/payments/all', {
+      fetch(`${API_BASE}/payments/all`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())

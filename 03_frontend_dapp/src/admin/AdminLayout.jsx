@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BOA_PAYMENTS_ADDRESS } from '../constants/contracts.js';
 import { StatCard, AreaChart, DonutChart, HBarChart } from './AdminCharts.jsx';
 import logoUrl from "../assets/boa-logo.png";
+import { API_BASE } from '../services/config.js';
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard',      icon: 'dashboard-line' },
@@ -18,7 +19,7 @@ const useTotalTransacciones = () => {
   useEffect(() => {
     const cargar = () => {
       const token = localStorage.getItem('boa_admin_token');
-      fetch('http://localhost:3000/api/payments/all', { headers: { 'Authorization': `Bearer ${token}` } })
+      fetch(`${API_BASE}/payments/all`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
         .then(res => { if (res.success && res.data) setTotal(res.data.length); })
         .catch(() => {});
@@ -110,7 +111,7 @@ export const DashboardScreen = () => {
   useEffect(() => {
     const fetchStats = () => {
       const token = localStorage.getItem('boa_admin_token');
-      fetch('http://localhost:3000/api/payments/all', {
+      fetch(`${API_BASE}/payments/all`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -133,7 +134,7 @@ export const DashboardScreen = () => {
           }
         })
         .catch(() => {});
-      fetch('http://localhost:3000/api/payments/resumen', { headers: { 'Authorization': `Bearer ${token}` } })
+      fetch(`${API_BASE}/payments/resumen`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
         .then(res => {
           if (!res.success) return;
@@ -143,7 +144,7 @@ export const DashboardScreen = () => {
           setStats(prev => ({ ...prev, success: cerradas ? ((conf / cerradas) * 100).toFixed(1) : '0.0', conf, exp, pend }));
         })
         .catch(() => {});
-      fetch('http://localhost:3000/api/chain')
+      fetch(`${API_BASE}/chain`)
         .then(res => res.json())
         .then(res => { if (res.success) setRed(res); })
         .catch(() => {});

@@ -5,6 +5,8 @@ const { obtenerTipoCambio } = require('../services/exchangeRateService');
 const notifier = require('../services/notifier');
 const { ethers } = require('ethers');
 const { provider, operador } = require('../config/web3');
+const faucet = require('../services/faucet');
+const respaldo = require('../services/respaldo');
 
 // Columnas con los alias que ya consume el frontend (se conserva el contrato de la API)
 const SELECT_PAGO = `
@@ -55,6 +57,7 @@ class PaymentController {
             red: REDES[config.chain.chainId] || `Red ${config.chain.chainId}`,
             contracts: { BoAPayments: config.chain.contractAddress, token: config.chain.tokenAddress },
             decimals: 6,
+            faucet: faucet.habilitado(),
         };
         try {
             const cuenta = await operador.getAddress();
@@ -106,6 +109,19 @@ class PaymentController {
             return res.json({ success: true, data: rows });
         } catch (err) {
             return manejarError(res, err, 'getAll');
+        }
+    }
+
+    /** GET /api/payments/backup (JWT) — respaldo de todas las tablas con huella SHA-256 */
+    async getBackup(req, res) {
+        try {
+            const datos = await respaldo.generar();
+            const sello = datos.generado_en.replace(/[-:]/g, '').replace('T', '_').slice(0, 15);
+            res.setHeader('Content-Disposition', `attachment; filename="respaldo_boa_${sello}.json"`);
+            console.log(`[RESPALDO] Generado por ${req.user?.username || 'usuario autenticado'}: ${JSON.stringify(datos.registros)}`);
+            return res.json(datos);
+        } catch (err) {
+            return manejarError(res, err, 'getBackup');
         }
     }
 

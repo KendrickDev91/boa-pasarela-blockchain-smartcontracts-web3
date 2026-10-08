@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import boaLogo from '../assets/boa-logo.png';
+import { API_BASE } from '../services/config.js';
 
 const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -22,7 +23,7 @@ export const AdminLogin = ({ onLoginSuccess }) => {
         setLoading(true);
 
         try {
-            const res = await fetch('http://localhost:3000/api/payments/login', {
+            const res = await fetch(`${API_BASE}/payments/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
@@ -121,7 +122,7 @@ export const FinancialDashboard = () => {
         
         try {
             const token = localStorage.getItem('boa_admin_token');
-            const response = await fetch(`http://localhost:3000/api/payments/all?startDate=${startDate}&endDate=${endDate} 23:59:59`, {
+            const response = await fetch(`${API_BASE}/payments/all?startDate=${startDate}&endDate=${endDate} 23:59:59`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }

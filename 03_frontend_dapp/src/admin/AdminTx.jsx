@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Button, Chip } from '../components/primitives.jsx';
 import { CryptoIcon, DetailRow } from '../payment/components.jsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import boaLogo from '../assets/boa-logo.png';
+import ReporteModal from './ReporteModal.jsx';
+import { totales, generarReporteCSV } from './reporteAuditoria.js';
+import { API_BASE } from '../services/config.js';
 
 const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -58,7 +58,7 @@ export default function TransactionsScreen() {
     
     const fetchTx = () => {
       const token = localStorage.getItem('boa_admin_token');
-      fetch('http://localhost:3000/api/payments/all', {
+      fetch(`${API_BASE}/payments/all`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -96,73 +96,34 @@ export default function TransactionsScreen() {
 
   const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
-  const exportCSV = () => {
-    if (filtered.length === 0) return;
-    const headers = ['PNR', 'Hash Tx', 'Monto (USDT)', 'Fecha de Pago', 'Estado'];
-    const csvContent = [
-      headers.join(','),
-      ...filtered.map(t => `${t.pnr},${t.tx_hash || 'N/A'},${t.monto_usdt},${formatDate(t.fecha_pago)},${t.tx_hash ? 'CONFIRMADO' : 'PENDIENTE'}`)
-    ].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'transacciones.csv';
-    link.click();
+  const filtros = {
+    desde: dateRange.start, hasta: dateRange.end, busqueda: search,
+    filtroEstado: { all: 'Todas', confirmado: 'Confirmadas', pendiente: 'Pendientes' }[filter],
   };
+  const suma = totales(filtered);
+  const [verReporte, setVerReporte] = useState(false);
+  const [respaldoMsg, setRespaldoMsg] = useState('');
 
-  const exportPDF = async () => {
-    if (filtered.length === 0) return;
-    const doc = new jsPDF();
-    
-    const img = new Image();
-    img.src = boaLogo;
-    await new Promise(r => { img.onload = r; });
+  const exportCSV = () => { if (filtered.length) generarReporteCSV(filtered, filtros); };
 
-    doc.setFillColor(248, 250, 252);
-    doc.rect(0, 0, 210, 40, 'F');
-    doc.addImage(img, 'PNG', 14, 12, 35, 12);
-
-    doc.setFontSize(16);
-    doc.setTextColor(0, 48, 111);
-    doc.setFont("helvetica", "bold");
-    doc.text("Registro Histórico de Transacciones Web3", 14, 32);
-
-    doc.setFontSize(9);
-    doc.setTextColor(71, 85, 105);
-    doc.setFont("helvetica", "normal");
-    const now = new Date();
-    doc.text(`Fecha: ${now.toLocaleDateString()}`, 196, 12, { align: 'right' });
-    doc.text(`Hora: ${now.toLocaleTimeString()}`, 196, 17, { align: 'right' });
-    doc.text(`Folio: FOLIO-${now.getTime().toString().slice(-6)}`, 196, 22, { align: 'right' });
-    doc.text(`Operador: ADMIN-WEB3`, 196, 27, { align: 'right' });
-
-    const headers = ['PNR', 'Hash Tx', 'Monto (USDT)', 'Fecha de Pago', 'Estado'];
-    const rowsData = filtered.map(t => [
-      t.pnr, t.tx_hash ? t.tx_hash.substring(0,16) + '...' : 'N/A', t.monto_usdt, formatDate(t.fecha_pago), t.tx_hash ? 'CONFIRMADO' : 'PENDIENTE'
-    ]);
-    
-    autoTable(doc, {
-      startY: 45, head: [headers], body: rowsData,
-      theme: 'grid',
-      headStyles: { fillColor: [0, 48, 111], textColor: 255, fontStyle: 'bold' },
-      bodyStyles: { textColor: [51, 65, 85], fontSize: 9 },
-      alternateRowStyles: { fillColor: [248, 250, 252] },
-      styles: { cellPadding: 5, lineColor: [226, 232, 240], lineWidth: 0.1 },
-      margin: { bottom: 30 }
-    });
-
-    const pageCount = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.setTextColor(148, 163, 184);
-        doc.text("Documento generado por el Motor de Orquestación Web3", 14, 285);
-        doc.text(`Página ${i} de ${pageCount}`, 196, 285, { align: 'right' });
+  const descargarRespaldo = async () => {
+    setRespaldoMsg('Generando respaldo…');
+    try {
+      const res = await fetch(`${API_BASE}/payments/backup`, { headers: { Authorization: `Bearer ${localStorage.getItem('boa_admin_token')}` } });
+      if (!res.ok) throw new Error(res.status === 401 || res.status === 403 ? 'sesión vencida, vuelva a iniciar sesión' : `HTTP ${res.status}`);
+      const datos = await res.json();
+      const nombre = (res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'respaldo_boa.json';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' }));
+      a.download = nombre; a.click();
+      const total = Object.values(datos.registros).reduce((x, y) => x + y, 0);
+      setRespaldoMsg(`Respaldo descargado: ${total} registros · SHA-256 ${datos.sha256.slice(0, 12)}…`);
+    } catch (e) {
+      setRespaldoMsg(`No se pudo generar el respaldo: ${e.message}`);
     }
-
-    doc.save('reporte_transacciones_boa.pdf');
   };
+
+  const fmt = (v, d) => v.toLocaleString('es-BO', { minimumFractionDigits: d, maximumFractionDigits: d });
 
   return (
     <div style={{ padding: '24px 28px' }}>
@@ -199,16 +160,29 @@ export default function TransactionsScreen() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Button variant="outline" size="sm" icon="file-excel-line" onClick={exportCSV}>CSV</Button>
-          <Button style={{ background: '#00306F', color: '#fff', border: 'none' }} size="sm" icon="file-pdf-line" onClick={exportPDF}>PDF</Button>
+          <Button size="sm" icon="file-pdf-line" onClick={() => setVerReporte(true)} disabled={filtered.length === 0}>Reporte firmado</Button>
+          <Button variant="outline" size="sm" icon="database-2-line" onClick={descargarRespaldo}>Backup</Button>
         </div>
       </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+        {[['Pagos en el filtro', `${suma.cantidad}`], ['Total en bolivianos', `Bs ${fmt(suma.bob, 2)}`], ['Total en USDT', `${fmt(suma.usdt, 2)} USDT`], ['T/C promedio ponderado', fmt(suma.tcPromedio, 4)]].map(([l, v]) => (
+          <div key={l} style={{ background: '#fff', borderRadius: 10, padding: '12px 16px', boxShadow: '0 2px 10px rgba(0,48,111,.06)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#6C767A', textTransform: 'uppercase', letterSpacing: '.06em' }}>{l}</div>
+            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 18, color: '#00306F', marginTop: 4 }}>{v}</div>
+          </div>
+        ))}
+      </div>
+      {respaldoMsg && (
+        <div style={{ marginBottom: 12, fontSize: 12, color: respaldoMsg.startsWith('No se') ? '#E11D2C' : '#00A95C' }}>{respaldoMsg}</div>
+      )}
 
       <div style={{ background: '#fff', borderRadius: 10, boxShadow: '0 2px 10px rgba(0,48,111,.06)', overflow: 'hidden' }}>
         <div className="table-scroll">
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 900 }}>
           <thead>
             <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB', textAlign: 'left' }}>
-              {['PNR','Hash Tx','Monto (USDT)','Fecha de Pago','Estado'].map(h => (
+              {['PNR','Hash Tx','Monto (Bs)','T/C','Monto (USDT)','Fecha de Pago','Estado'].map(h => (
                 <th key={h} style={{ padding: '12px 14px', fontSize: 11, fontWeight: 700, color: '#6C767A', textTransform: 'uppercase', letterSpacing: '.06em', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
@@ -223,6 +197,8 @@ export default function TransactionsScreen() {
                 <td style={{ padding: '11px 14px', color: '#006DB2', whiteSpace: 'nowrap', fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 }} onClick={e => e.stopPropagation()}>
                     {t.tx_hash ? <a href={`/explorer/tx/${t.tx_hash}`} target="_blank" rel="noopener noreferrer" style={{color:'#006DB2', textDecoration:'underline'}}>{t.tx_hash.substring(0,16)}...</a> : 'N/A'}
                 </td>
+                <td style={{ padding: '11px 14px', whiteSpace: 'nowrap', fontFamily: "'IBM Plex Mono', monospace", color: '#1D2429' }}>{t.monto_bob}</td>
+                <td style={{ padding: '11px 14px', whiteSpace: 'nowrap', fontFamily: "'IBM Plex Mono', monospace", color: '#6C767A' }}>{t.tipo_cambio}</td>
                 <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
                   <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, color: '#1D2429' }}>{t.monto_usdt}</div>
                 </td>
@@ -234,7 +210,7 @@ export default function TransactionsScreen() {
             ))}
             {filtered.length === 0 && (
                 <tr>
-                    <td colSpan="5" style={{ padding: '30px', textAlign: 'center', color: '#6C767A' }}>
+                    <td colSpan="7" style={{ padding: '30px', textAlign: 'center', color: '#6C767A' }}>
                         No se encontraron transacciones registradas en el libro mayor.
                     </td>
                 </tr>
@@ -256,6 +232,8 @@ export default function TransactionsScreen() {
           </div>
         </div>
       </div>
+
+      {verReporte && <ReporteModal filas={filtered} filtros={filtros} onCerrar={() => setVerReporte(false)} />}
 
       {selectedTx && (
         <div onClick={() => setSelectedTx(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,32,77,.45)', zIndex: 100 }}>

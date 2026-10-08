@@ -12,6 +12,9 @@ router.post('/login', limitarLogin, authController.login.bind(authController));
 router.get('/all', authMiddleware, paymentController.getAll.bind(paymentController));
 router.get('/resumen', authMiddleware, paymentController.getResumen.bind(paymentController));
 
+// Respaldo completo de la base de datos en JSON (requiere JWT)
+router.get('/backup', authMiddleware, paymentController.getBackup.bind(paymentController));
+
 // Consultas de estado y trazabilidad
 router.get('/status/:pnr', paymentController.getStatus.bind(paymentController));
 router.get('/tx/:hash', paymentController.getByHash.bind(paymentController));
