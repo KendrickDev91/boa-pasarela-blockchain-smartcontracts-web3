@@ -37,3 +37,8 @@ logs
 # Direcciones de despliegues locales (cambian en cada reinicio del nodo)
 **/deployments/localhost.json
 **/deployments/hardhat.json
+
+# Resultados crudos de JMeter (se conservan los resúmenes, reportes HTML y gráficas)
+05_despliegue/jmeter/**/*.jtl
+05_despliegue/jmeter/**/*.log
+05_despliegue/jmeter/*.log

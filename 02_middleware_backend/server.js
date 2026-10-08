@@ -6,6 +6,9 @@ const config = require('./config');
 const paymentRoutes = require('./routes/paymentRoutes');
 const paymentController = require('./controllers/paymentController');
 const blockchainListener = require('./services/blockchainListener');
+const rpcPublico = require('./services/rpcPublico');
+const faucet = require('./services/faucet');
+const metricas = require('./services/metricas');
 
 const app = express();
 
@@ -19,8 +22,10 @@ app.use((req, res, next) => {
     res.setHeader('Referrer-Policy', 'no-referrer');
     next();
 });
+app.set('trust proxy', 'loopback'); // detrás de Apache: IP real del cliente para los límites
 app.use(cors({ origin: config.frontendUrl, optionsSuccessStatus: 200 }));
 app.use(express.json({ limit: '16kb' }));
+app.use('/api', metricas.medir);
 app.use(morgan(':date[iso] | :method :url :status :response-time ms - :res[content-length]'));
 
 // =========================================================
@@ -38,6 +43,7 @@ app.get('/', (req, res) => res.json({
         tipoCambio: 'GET /api/payments/rate',
         confirmacionSSE: 'GET /api/pagos/:pnr/stream',
         conciliacion: 'GET /api/payments/all (requiere JWT)',
+        rpcPublico: 'POST /rpc (JSON-RPC filtrado)',
     },
 }));
 
@@ -53,6 +59,28 @@ app.get('/api/chain', paymentController.chainInfo.bind(paymentController));
 app.get('/api/pagos/:pnr/stream', paymentController.stream.bind(paymentController));
 
 app.get('/api/health', (req, res) => res.json({ success: true, estado: 'operativo' }));
+
+// Métricas del módulo de pagos para Cacti (solo solicitudes locales)
+app.get('/api/metricas', metricas.manejar);
+
+// RPC público filtrado de la red de pruebas (lo registra la billetera del usuario)
+app.post('/rpc', rpcPublico.manejar);
+
+// Grifo de fondos de prueba (solo red local 31337 y FAUCET_ENABLED=true)
+const solicitudesFaucet = new Map();
+app.post('/api/chain/faucet', async (req, res) => {
+    const ip = req.ip;
+    const ahora = Date.now();
+    const r = (solicitudesFaucet.get(ip) || []).filter((t) => ahora - t < 60 * 60 * 1000);
+    if (r.length >= 5) return res.status(429).json({ success: false, message: 'Demasiadas solicitudes de fondos de prueba' });
+    solicitudesFaucet.set(ip, r.concat(ahora));
+    try {
+        const resultado = await faucet.acreditar(req.body && req.body.address);
+        return res.json({ success: true, ...resultado });
+    } catch (err) {
+        return res.status(err.status || 500).json({ success: false, message: err.status ? err.message : 'No se pudieron acreditar los fondos' });
+    }
+});
 
 // =========================================================
 // RESPUESTAS DE ERROR EN JSON (sin páginas HTML ni trazas internas)

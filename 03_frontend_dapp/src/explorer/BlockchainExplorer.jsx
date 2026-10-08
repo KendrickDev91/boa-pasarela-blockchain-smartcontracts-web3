@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import polygonLogo from '../assets/polygon-logo.png';
+import { API_BASE } from '../services/config.js';
 
 export default function BlockchainExplorer() {
   const { hash } = useParams();
@@ -12,7 +13,7 @@ export default function BlockchainExplorer() {
     let isMounted = true;
     const fetchTx = async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/payments/tx/${hash}`);
+        const res = await fetch(`${API_BASE}/payments/tx/${hash}`);
         const data = await res.json();
         
         if (data.success) {

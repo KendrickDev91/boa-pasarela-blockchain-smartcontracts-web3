@@ -41,5 +41,11 @@ module.exports = {
         timeoutMs: Number(process.env.EXCHANGE_RATE_TIMEOUT_MS || 4000),
         vigenciaMin: Number(process.env.QUOTE_TTL_MINUTES || 15),
     },
+    // Grifo de fondos de prueba: cuenta #1 pública de Hardhat, solo en la red local (chainId 31337)
+    faucet: {
+        habilitado: process.env.FAUCET_ENABLED === 'true',
+        privateKey: process.env.FAUCET_PRIVATE_KEY
+            || '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
+    },
     nucleo: { webhookUrl: process.env.CORE_WEBHOOK_URL || null, token: process.env.CORE_TOKEN || null },
 };

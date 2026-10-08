@@ -2,6 +2,9 @@
 // Valores por defecto: red local de Hardhat (chainId 31337) tras ejecutar scripts/deploy.js.
 export const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || 31337);
 export const RPC_URL = import.meta.env.VITE_RPC_URL || 'http://127.0.0.1:8545';
+// RPC que la billetera registra al agregar la red (en producción, https://<servidor>/rpc)
+export const PUBLIC_RPC_URL = import.meta.env.VITE_PUBLIC_RPC_URL || RPC_URL;
+export const CHAIN_NAME = import.meta.env.VITE_CHAIN_NAME || 'BoA Red de Pruebas';
 
 export const BOA_PAYMENTS_ADDRESS = import.meta.env.VITE_BOA_PAYMENTS_ADDRESS || "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 

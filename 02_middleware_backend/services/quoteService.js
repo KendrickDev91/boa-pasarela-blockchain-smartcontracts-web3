@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const { ethers } = require('ethers');
 const pool = require('../config/db');
 const config = require('../config');
-const { operador, contrato } = require('../config/web3');
+const { operador, contrato, provider } = require('../config/web3');
 const { obtenerTipoCambio, bobAUnidades } = require('./exchangeRateService');
 
 const ALFABETO_PNR = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -17,16 +17,32 @@ function generarPnr() {
  * fuera de este proceso, el contador local de nonce queda desfasado (NONCE_EXPIRED):
  * se resincroniza con la red y se reintenta una sola vez.
  */
+// Cola de envío de la cuenta operadora: las transacciones se firman y envían de una en una,
+// de modo que los nonces se asignan en orden aun con solicitudes concurrentes. La espera de la
+// confirmación ocurre fuera de la cola, por lo que no limita el paralelismo.
+let colaEnvio = Promise.resolve();
+function enviarEnOrden(fn) {
+    const envio = colaEnvio.then(async () => {
+        try {
+            return await fn();
+        } catch (err) {
+            operador.reset(); // un envío fallido no debe dejar el contador de nonce adelantado
+            throw err;
+        }
+    });
+    colaEnvio = envio.catch(() => {});
+    return envio;
+}
+
 async function registrarOnChain(boa, pnr, unidades, venceEn) {
     for (let intento = 1; ; intento++) {
         try {
-            const tx = await boa.connect(operador).registrarTarifa(pnr, unidades, venceEn);
+            const tx = await enviarEnOrden(() => boa.connect(operador).registrarTarifa(pnr, unidades, venceEn));
             return await tx.wait();
         } catch (err) {
-            const nonceDesfasado = err.code === 'NONCE_EXPIRED' || /nonce/i.test(err.shortMessage || err.message);
-            if (!nonceDesfasado || intento > 1) throw err;
-            console.warn('[OPERADOR] Nonce desfasado; se resincroniza con la red y se reintenta.');
-            operador.reset();
+            const nonceDesfasado = err.code === 'NONCE_EXPIRED' || /nonce/i.test(`${err.shortMessage || ''} ${err.message || ''}`);
+            if (!nonceDesfasado || intento >= 3) throw err;
+            console.warn(`[OPERADOR] Nonce desfasado (intento ${intento}); se resincroniza con la red y se reintenta.`);
         }
     }
 }
@@ -75,7 +91,11 @@ async function crearSolicitud({ pnr, montoBob }) {
     }
 
     try {
-        await registrarOnChain(boa, pnr, unidades, venceEn);
+        // La vigencia on-chain se calcula sobre el reloj de la cadena (block.timestamp), que es el que
+        // valida el contrato; en una red de pruebas con minado inmediato puede adelantarse al reloj real.
+        const { timestamp } = await provider.getBlock('latest');
+        const venceEnCadena = Math.max(venceEn, Number(timestamp) + config.cotizacion.vigenciaMin * 60);
+        await registrarOnChain(boa, pnr, unidades, venceEnCadena);
     } catch (err) {
         if (rows[0].insertado) {
             await pool.query(`DELETE FROM pasarela_pagos_cripto WHERE id_reserva = $1 AND estado_pago = 'PENDIENTE'`, [pnr]);

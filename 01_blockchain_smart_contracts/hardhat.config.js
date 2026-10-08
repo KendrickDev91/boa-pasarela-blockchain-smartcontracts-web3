@@ -19,6 +19,9 @@ module.exports = {
     ]
   },
   networks: {
+    // Nodo local: bloques con la misma marca de tiempo permitidos, para que el reloj de la
+    // cadena no se adelante al real cuando se minan varias transacciones por segundo
+    hardhat: { allowBlocksWithSameTimestamp: true },
     polygonAmoy: {
       url: process.env.POLYGON_AMOY_RPC_URL || "",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []

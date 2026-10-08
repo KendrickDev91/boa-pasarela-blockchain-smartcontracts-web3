@@ -1,6 +1,6 @@
 // Cliente del middleware BoA. Si el backend no está disponible, los componentes
 // hacen fallback a datos en caché para mantener la operación.
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+import { API_BASE as BASE } from './config.js';
 
 async function get(path) {
   const res = await fetch(`${BASE}${path}`, { headers: { Accept: 'application/json' } });
