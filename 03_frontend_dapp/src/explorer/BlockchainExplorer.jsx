@@ -3,6 +3,37 @@ import { useParams } from 'react-router-dom';
 import polygonLogo from '../assets/polygon-logo.png';
 import { API_BASE } from '../services/config.js';
 
+// Diseño adaptable: en pantallas angostas la etiqueta va arriba del valor
+const ESTILOS = `
+.exp-page { min-height: 100vh; background: #F9FAFB; font-family: Lato, sans-serif; padding: 40px 20px; display: flex; justify-content: center; box-sizing: border-box; }
+.exp-head { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; }
+.exp-head img { height: 40px; object-fit: contain; flex-shrink: 0; }
+.exp-head h1 { margin: 0; font-size: 28px; font-weight: 800; color: #111827; letter-spacing: -0.02em; line-height: 1.15; }
+.exp-sub { font-size: 20px; font-weight: 700; color: #1D2429; margin: 0 0 20px; }
+.exp-card { background: #fff; border-radius: 12px; border: 1px solid #E5E7EB; box-shadow: 0 4px 6px rgba(0,0,0,0.02); padding: 10px 30px; }
+.exp-row { display: flex; flex-direction: row; padding: 20px 0; border-bottom: 1px solid #E5E7EB; gap: 20px; }
+.exp-row:last-child { border-bottom: none; }
+.exp-label { flex: 0 0 250px; color: #6C767A; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.exp-value { flex: 1; min-width: 0; color: #1D2429; overflow-wrap: anywhere; }
+.exp-mono { font-family: 'IBM Plex Mono', monospace; word-break: break-all; }
+.exp-footer { margin-top: 40px; padding: 20px 0; border-top: 1px solid #E5E7EB; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 12px; color: #6C767A; }
+.exp-nota { color: #6C767A; margin-left: 8px; font-size: 14px; }
+@media (max-width: 640px) {
+  .exp-page { padding: 20px 14px; }
+  .exp-head { margin-bottom: 18px; }
+  .exp-head img { height: 30px; }
+  .exp-head h1 { font-size: 21px; }
+  .exp-sub { font-size: 17px; margin-bottom: 12px; }
+  .exp-card { padding: 4px 16px; }
+  .exp-row { flex-direction: column; gap: 6px; padding: 14px 0; }
+  .exp-label { flex: none; font-size: 13px; }
+  .exp-value { font-size: 15px; }
+  .exp-mono { font-size: 13px; }
+  .exp-nota { display: block; margin-left: 0; margin-top: 4px; font-size: 13px; }
+  .exp-footer { flex-direction: column; align-items: flex-start; margin-top: 24px; }
+}
+`;
+
 export default function BlockchainExplorer() {
   const { hash } = useParams();
   const [loading, setLoading] = useState(true);
@@ -49,51 +80,28 @@ export default function BlockchainExplorer() {
     return `${dateStr}, ${timeStr}`;
   };
 
-  const DataRow = ({ label, children, isLast }) => (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'row',
-      padding: '20px 0',
-      borderBottom: isLast ? 'none' : '1px solid #E5E7EB',
-      gap: 20
-    }}>
-      <div style={{
-        flex: '0 0 250px',
-        color: '#6C767A',
-        fontWeight: 600,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8
-      }}>
+  const DataRow = ({ label, children }) => (
+    <div className="exp-row">
+      <div className="exp-label">
         <i className="ri-question-line" style={{ fontSize: 14, opacity: 0.6 }}></i>
         {label}:
       </div>
-      <div style={{ flex: 1, color: '#1D2429' }}>
-        {children}
-      </div>
+      <div className="exp-value">{children}</div>
     </div>
   );
 
   return (
-    <div style={{
-      minHeight: '100vh', 
-      background: '#F9FAFB', 
-      fontFamily: 'Lato, sans-serif',
-      padding: '40px 20px',
-      display: 'flex',
-      justifyContent: 'center'
-    }}>
+    <div className="exp-page">
+      <style>{ESTILOS}</style>
       <div style={{ width: '100%', maxWidth: 960 }}>
         
         {/* Encabezado Principal */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 30 }}>
-          <img src={polygonLogo} alt="Red Polygon" style={{ height: 40, objectFit: 'contain' }} />
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: '#111827', letterSpacing: '-0.02em' }}>
-            Explorador de transacciones BoA
-          </h1>
+        <div className="exp-head">
+          <img src={polygonLogo} alt="Red Polygon" />
+          <h1>Explorador de transacciones BoA</h1>
         </div>
 
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: '#1D2429', marginBottom: 20 }}>
+        <h2 className="exp-sub">
           Detalles de la Transacción
         </h2>
 
@@ -108,16 +116,10 @@ export default function BlockchainExplorer() {
              <div style={{ fontSize: 16, color: '#1D2429', fontWeight: 700, marginTop: 15 }}>{errorMsg}</div>
           </div>
         ) : (
-          <div style={{ 
-            background: '#fff', 
-            borderRadius: 12, 
-            border: '1px solid #E5E7EB', 
-            boxShadow: '0 4px 6px rgba(0,0,0,0.02)',
-            padding: '10px 30px'
-          }}>
+          <div className="exp-card">
             
             <DataRow label="Hash de Transacción">
-              <span style={{ fontFamily: "'IBM Plex Mono', monospace", wordBreak: 'break-all' }}>
+              <span className="exp-mono">
                 {hash}
               </span>
             </DataRow>
@@ -140,7 +142,7 @@ export default function BlockchainExplorer() {
 
             <DataRow label="Bloque">
               <span style={{ color: '#00306F', fontWeight: 600 }}>{txData.bloque_red || 'N/A'}</span>
-              <span style={{ color: '#6C767A', marginLeft: 8, fontSize: 14 }}>
+              <span className="exp-nota">
                 (Bloque Confirmado)
               </span>
             </DataRow>
@@ -166,12 +168,13 @@ export default function BlockchainExplorer() {
                 borderRadius: 4, 
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 6
+                gap: 6,
+                maxWidth: '100%'
               }}>
-                <i className="ri-file-list-3-line"></i>
+                <i className="ri-file-list-3-line" style={{ flexShrink: 0 }}></i>
                 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
               </span>
-              <span style={{ color: '#6C767A', marginLeft: 8, fontSize: 14 }}>
+              <span className="exp-nota">
                 (Contrato Inteligente BoA)
               </span>
             </DataRow>
@@ -211,7 +214,7 @@ export default function BlockchainExplorer() {
               </div>
             </DataRow>
 
-            <DataRow label="Tarifa de Red (Gas)" isLast>
+            <DataRow label="Tarifa de Red (Gas)">
               <span>{txData.gas_pagado ? `${Number(txData.gas_pagado).toFixed(6)} POL` : 'N/A'}</span>
             </DataRow>
 
@@ -219,17 +222,7 @@ export default function BlockchainExplorer() {
         )}
 
         {/* Pie de Página (Footer) */}
-        <div style={{
-          marginTop: 40,
-          padding: '20px 0',
-          borderTop: '1px solid #E5E7EB',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          fontSize: 12,
-          color: '#6C767A',
-          background: '#F9FAFB',
-        }}>
+        <div className="exp-footer">
           <div>Explorador interno de la pasarela · datos del registro de auditoría de BoA</div>
           <div>Verificación pública: explorador oficial de la red configurada</div>
         </div>
