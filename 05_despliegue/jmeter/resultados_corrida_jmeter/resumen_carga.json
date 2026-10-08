@@ -1,0 +1,158 @@
+[
+  {
+    "usuarios": 10,
+    "solicitudes": 1587,
+    "rendimiento_rps": 5.2,
+    "promedio_ms": 808,
+    "p90_ms": 1460,
+    "p95_ms": 1976,
+    "error_pct": 0.13,
+    "cpu_prom_pct": 13,
+    "cpu_max_pct": 54,
+    "ram_prom_mb": 672,
+    "ram_max_mb": 717,
+    "operaciones": {
+      "01 Tipo de cambio": {
+        "n": 400,
+        "promedio_ms": 820,
+        "p95_ms": 2796,
+        "errores": 0
+      },
+      "02 Parametros de red": {
+        "n": 398,
+        "promedio_ms": 760,
+        "p95_ms": 3400,
+        "errores": 0
+      },
+      "03 Crear solicitud de pago (registrarTarifa)": {
+        "n": 396,
+        "promedio_ms": 932,
+        "p95_ms": 1817,
+        "errores": 1
+      },
+      "04 Estado del pago": {
+        "n": 393,
+        "promedio_ms": 720,
+        "p95_ms": 1422,
+        "errores": 1
+      }
+    }
+  },
+  {
+    "usuarios": 25,
+    "solicitudes": 3760,
+    "rendimiento_rps": 12.5,
+    "promedio_ms": 898,
+    "p90_ms": 1488,
+    "p95_ms": 3420,
+    "error_pct": 0.56,
+    "cpu_prom_pct": 29,
+    "cpu_max_pct": 68,
+    "ram_prom_mb": 698,
+    "ram_max_mb": 772,
+    "operaciones": {
+      "01 Tipo de cambio": {
+        "n": 949,
+        "promedio_ms": 884,
+        "p95_ms": 3459,
+        "errores": 1
+      },
+      "02 Parametros de red": {
+        "n": 942,
+        "promedio_ms": 865,
+        "p95_ms": 3411,
+        "errores": 3
+      },
+      "03 Crear solicitud de pago (registrarTarifa)": {
+        "n": 937,
+        "promedio_ms": 1059,
+        "p95_ms": 3596,
+        "errores": 6
+      },
+      "04 Estado del pago": {
+        "n": 932,
+        "promedio_ms": 785,
+        "p95_ms": 3368,
+        "errores": 11
+      }
+    }
+  },
+  {
+    "usuarios": 50,
+    "solicitudes": 7003,
+    "rendimiento_rps": 23.1,
+    "promedio_ms": 1038,
+    "p90_ms": 1755,
+    "p95_ms": 3472,
+    "error_pct": 0.49,
+    "cpu_prom_pct": 39,
+    "cpu_max_pct": 65,
+    "ram_prom_mb": 789,
+    "ram_max_mb": 843,
+    "operaciones": {
+      "01 Tipo de cambio": {
+        "n": 1767,
+        "promedio_ms": 1062,
+        "p95_ms": 3537,
+        "errores": 4
+      },
+      "02 Parametros de red": {
+        "n": 1759,
+        "promedio_ms": 919,
+        "p95_ms": 3421,
+        "errores": 8
+      },
+      "03 Crear solicitud de pago (registrarTarifa)": {
+        "n": 1747,
+        "promedio_ms": 1229,
+        "p95_ms": 3669,
+        "errores": 8
+      },
+      "04 Estado del pago": {
+        "n": 1730,
+        "promedio_ms": 943,
+        "p95_ms": 3408,
+        "errores": 14
+      }
+    }
+  },
+  {
+    "usuarios": 100,
+    "solicitudes": 11565,
+    "rendimiento_rps": 38.2,
+    "promedio_ms": 1468,
+    "p90_ms": 3455,
+    "p95_ms": 4306,
+    "error_pct": 0.8,
+    "cpu_prom_pct": 53,
+    "cpu_max_pct": 75,
+    "ram_prom_mb": 968,
+    "ram_max_mb": 1045,
+    "operaciones": {
+      "01 Tipo de cambio": {
+        "n": 2931,
+        "promedio_ms": 1138,
+        "p95_ms": 3488,
+        "errores": 17
+      },
+      "02 Parametros de red": {
+        "n": 2906,
+        "promedio_ms": 1036,
+        "p95_ms": 3428,
+        "errores": 16
+      },
+      "03 Crear solicitud de pago (registrarTarifa)": {
+        "n": 2881,
+        "promedio_ms": 2707,
+        "p95_ms": 5375,
+        "errores": 21
+      },
+      "04 Estado del pago": {
+        "n": 2847,
+        "promedio_ms": 997,
+        "p95_ms": 3411,
+        "errores": 38
+      }
+    }
+  }
+]

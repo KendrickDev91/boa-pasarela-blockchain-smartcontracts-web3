@@ -1,0 +1,95 @@
+{
+  "red": "localhost",
+  "contrato": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+  "token": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+  "tesoreria": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "importe": "135.06",
+  "acreditadoEnTesoreria": "135.06",
+  "pagado": true,
+  "fecha": "2026-09-28T11:33:40.506Z",
+  "casos": [
+    {
+      "id": "DC-01",
+      "descripcion": "El operador registra la tarifa del localizador",
+      "esperado": "Aceptada (TarifaRegistrada)",
+      "obtenido": "Aceptada (TarifaRegistrada)",
+      "gas": 73901,
+      "tx": "0xcfc6e7b3f5976d54828e8ebc40af961cfe0eafeb46bc4f05d4f72db095c9b2f8",
+      "cumple": true
+    },
+    {
+      "id": "DC-02",
+      "descripcion": "Una cuenta ajena intenta registrar una tarifa",
+      "esperado": "Rechazada (SoloOperador)",
+      "obtenido": "Rechazada (SoloOperador)",
+      "gas": null,
+      "tx": null,
+      "cumple": true
+    },
+    {
+      "id": "DC-03",
+      "descripcion": "El pasajero paga sin autorizar el gasto (approve)",
+      "esperado": "Rechazada (ERC20InsufficientAllowance)",
+      "obtenido": "Rechazada (ERC20InsufficientAllowance)",
+      "gas": null,
+      "tx": null,
+      "cumple": true
+    },
+    {
+      "id": "DC-04",
+      "descripcion": "Firma 1/2: el pasajero autoriza el gasto por el importe exacto",
+      "esperado": "Aceptada",
+      "obtenido": "Aceptada",
+      "gas": 46366,
+      "tx": "0x87a26861c74b947d4ec7a387e9f5b296c9429707b70547bbebe8c8985de2769d",
+      "cumple": true
+    },
+    {
+      "id": "DC-05",
+      "descripcion": "Firma 2/2: el pasajero paga el boleto",
+      "esperado": "Aceptada (PagoConfirmado)",
+      "obtenido": "Aceptada (PagoConfirmado)",
+      "gas": 72926,
+      "tx": "0x875c928af35c4ebad6b44fa13d2df87a8cfd61fb4ba0c6ebf642054340c83ecf",
+      "cumple": true
+    },
+    {
+      "id": "DC-06",
+      "descripcion": "Segundo pago del mismo localizador (doble cobro)",
+      "esperado": "Rechazada (PnrYaPagado)",
+      "obtenido": "Rechazada (PnrYaPagado)",
+      "gas": null,
+      "tx": null,
+      "cumple": true
+    },
+    {
+      "id": "DC-07",
+      "descripcion": "Pago de un localizador sin tarifa registrada",
+      "esperado": "Rechazada (PnrSinTarifa)",
+      "obtenido": "Rechazada (PnrSinTarifa)",
+      "gas": null,
+      "tx": null,
+      "cumple": true
+    },
+    {
+      "id": "DC-08",
+      "descripcion": "Pago con la cotización vencida",
+      "esperado": "Rechazada (CotizacionVencida)",
+      "obtenido": "Rechazada (CotizacionVencida)",
+      "gas": null,
+      "tx": null,
+      "cumple": true
+    },
+    {
+      "id": "DC-09",
+      "descripcion": "Una cuenta ajena intenta rescatar tokens del contrato",
+      "esperado": "Rechazada (OwnableUnauthorizedAccount)",
+      "obtenido": "Rechazada (OwnableUnauthorizedAccount)",
+      "gas": null,
+      "tx": null,
+      "cumple": true
+    }
+  ],
+  "cumplidos": 9,
+  "total": 9
+}
