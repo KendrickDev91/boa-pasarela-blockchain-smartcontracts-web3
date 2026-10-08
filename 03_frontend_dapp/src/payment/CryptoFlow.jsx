@@ -7,7 +7,8 @@ import { FadeIn, DrawnCheck } from './PaymentChrome.jsx';
 import PrintableTicket from './PrintableTicket.jsx';
 import { api } from '../services/api.js';
 import { ethers } from 'ethers';
-import { BOA_PAYMENTS_ADDRESS, BOA_PAYMENTS_ABI, USDT_TOKEN_ADDRESS, ERC20_ABI, CHAIN_ID, RPC_URL } from '../constants/contracts.js';
+import { BOA_PAYMENTS_ADDRESS, BOA_PAYMENTS_ABI, USDT_TOKEN_ADDRESS, ERC20_ABI, CHAIN_ID, RPC_URL, PUBLIC_RPC_URL, CHAIN_NAME } from '../constants/contracts.js';
+import { API_BASE } from '../services/config.js';
 
 const tieneMetaMask = () => !!window.ethereum;
 const explorerTxUrl = (chainId, txHash) => txHash ? `/explorer/tx/${txHash}` : null;
@@ -101,13 +102,15 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
   const [busy, setBusy] = useState(false);
   const [walletMsg, setWalletMsg] = useState('');
   const [error, setError] = useState('');
+  const [faucetAddr, setFaucetAddr] = useState(null); // billetera sin saldo en la red de pruebas
+  const [faucetMsg, setFaucetMsg] = useState('');
   const [chain, setChain] = useState(null); // { chainId, contracts, tesoreria, decimals }
   const [exchangeRate, setExchangeRate] = useState(null);
   const esRef = useRef(null);
 
   // Consultar la tasa dinámica del oráculo del backend
   useEffect(() => {
-    fetch('http://localhost:3000/api/payments/rate')
+    fetch(`${API_BASE}/payments/rate`)
       .then(res => res.json())
       .then(data => {
         if (data.success && data.tasa) setExchangeRate(data.tasa);
@@ -149,7 +152,7 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
           setStatus('confirmed');
           es.close();
           // Asegurar que recuperamos el tipo_cambio y monto reales de la BD
-          fetch(`http://localhost:3000/api/payments/status/${pnr}`)
+          fetch(`${API_BASE}/payments/status/${pnr}`)
             .then(r => r.json())
             .then(data => {
               setTimeout(() => onSuccess && onSuccess({ 
@@ -180,7 +183,7 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
     // 2. Polling activo (tolerancia a pérdida de conexión SSE o caída del middleware)
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:3000/api/payments/status/${pnr}`);
+        const res = await fetch(`${API_BASE}/payments/status/${pnr}`);
         if (!res.ok) return;
         const data = await res.json();
         
@@ -252,14 +255,51 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
       // 2. Verificar que la billetera esté en la red del contrato
       const chainHex = await callMetaMask(ethProvider, 'eth_chainId');
       if (Number(chainHex) !== CHAIN_ID) {
-        await callMetaMask(ethProvider, 'wallet_switchEthereumChain', [{ chainId: '0x' + CHAIN_ID.toString(16) }]);
+        const chainIdHex = '0x' + CHAIN_ID.toString(16);
+        try {
+          await callMetaMask(ethProvider, 'wallet_switchEthereumChain', [{ chainId: chainIdHex }]);
+        } catch (e) {
+          // 4902: la red no está registrada en la billetera; se agrega con el RPC público del servidor
+          if (e?.code !== 4902 && !/unrecognized|not been added/i.test(e?.message || '')) throw e;
+          await callMetaMask(ethProvider, 'wallet_addEthereumChain', [{
+            chainId: chainIdHex,
+            chainName: CHAIN_NAME,
+            rpcUrls: [PUBLIC_RPC_URL],
+            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+          }]);
+        }
       }
 
-      // 3. Chequeo de saldo (solo lectura)
+      // 3. La billetera debe enviar las firmas al mismo nodo que lee el servidor: otra red con el mismo
+      //    chainId (por ejemplo, un Hardhat local en 127.0.0.1:8545) recibiría la firma sin que el cobro avance
       const readProvider = new ethers.JsonRpcProvider(RPC_URL);
+      const mismoNodo = async () => {
+        const bloque = await readProvider.getBlock('latest');
+        if (!bloque) return false;
+        const enBilletera = await callMetaMask(ethProvider, 'eth_getBlockByNumber', ['0x' + bloque.number.toString(16), false]).catch(() => null);
+        return !!enBilletera && enBilletera.hash === bloque.hash;
+      };
+      if (!(await mismoNodo())) {
+        // Se ofrece en la billetera el RPC público del servidor para esta red
+        await callMetaMask(ethProvider, 'wallet_addEthereumChain', [{
+          chainId: '0x' + CHAIN_ID.toString(16),
+          chainName: CHAIN_NAME,
+          rpcUrls: [PUBLIC_RPC_URL],
+          nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+        }]).catch(() => null);
+        if (!(await mismoNodo())) {
+          throw new Error(`La billetera está conectada a otro nodo de la red ${CHAIN_ID}. En MetaMask, edite esa red y seleccione el RPC ${PUBLIC_RPC_URL}; luego vuelva a pagar.`);
+        }
+      }
+
+      // 4. Chequeo de saldo (solo lectura)
       const usdtContract = new ethers.Contract(USDT_TOKEN_ADDRESS, ERC20_ABI, readProvider);
-      if ((await usdtContract.balanceOf(userAddress)) < montoUnidades) {
-        throw new Error('Saldo de USDT insuficiente para completar la transacción');
+      const sinGas = (await readProvider.getBalance(userAddress)) === 0n;
+      if (sinGas || (await usdtContract.balanceOf(userAddress)) < montoUnidades) {
+        if (chain?.faucet) setFaucetAddr(userAddress);
+        throw new Error(sinGas
+          ? 'La billetera no tiene saldo para pagar la comisión de red'
+          : 'Saldo de USDT insuficiente para completar la transacción');
       }
 
       // Espera la confirmación de cada transacción antes de continuar
@@ -275,14 +315,14 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
         throw new Error('Tiempo de espera agotado al confirmar la transacción');
       };
 
-      // 4. Firma 1/2: autorización de gasto (approve) por el importe exacto
+      // 5. Firma 1/2: autorización de gasto (approve) por el importe exacto
       setWalletMsg('1/2 Autorizando el gasto de USDT');
       const ifaceUSDT = new ethers.Interface(ERC20_ABI);
       const dataApprove = ifaceUSDT.encodeFunctionData('approve', [ADDRESS, montoUnidades]);
       const hashApprove = await callMetaMask(ethProvider, 'eth_sendTransaction', [{ from: userAddress, to: USDT_TOKEN_ADDRESS, data: dataApprove }]);
       await esperarRecibo(hashApprove);
 
-      // 5. Firma 2/2: pago (el contrato toma el importe de la tarifa registrada)
+      // 6. Firma 2/2: pago (el contrato toma el importe de la tarifa registrada)
       setWalletMsg('2/2 Confirmando el pago en la red');
       const ifaceBoA = new ethers.Interface(BOA_PAYMENTS_ABI);
       const dataPago = ifaceBoA.encodeFunctionData('pagarBoleto', [pnr]);
@@ -419,6 +459,30 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
             <div style={{ marginTop: 14, fontSize: 12, color: '#E11D2C', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
               <i className="ri-error-warning-line" style={{ marginTop: 1 }}></i> {error}
             </div>
+          )}
+          {faucetAddr && (
+            <div style={{ marginTop: 10, textAlign: 'center' }}>
+              <button
+                type="button"
+                disabled={!!faucetMsg && faucetMsg.startsWith('Enviando')}
+                onClick={async () => {
+                  setFaucetMsg('Enviando fondos de prueba…');
+                  try {
+                    await api.faucet(faucetAddr);
+                    setFaucetMsg('Fondos de prueba acreditados. Vuelve a pagar.');
+                    setError(''); setFaucetAddr(null);
+                  } catch (e) {
+                    setFaucetMsg(e?.message || 'No se pudieron acreditar los fondos');
+                  }
+                }}
+                style={{ fontSize: 12, fontWeight: 700, color: '#006DB2', background: '#E0F6FF', border: '1px solid #BFE6FF', borderRadius: 6, padding: '8px 12px', cursor: 'pointer' }}
+              >
+                Obtener USDT y ETH de prueba
+              </button>
+            </div>
+          )}
+          {faucetMsg && !faucetAddr && (
+            <div style={{ marginTop: 10, fontSize: 12, color: '#00A95C', textAlign: 'center' }}>{faucetMsg}</div>
           )}
           {!real && (
             <div style={{ marginTop: 14, fontSize: 12, color: '#006DB2', background: '#E0F6FF', border: '1px solid #BFE6FF', borderRadius: 6, padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
