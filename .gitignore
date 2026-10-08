@@ -15,13 +15,11 @@ frontend/dist/
 frontend/dist-ssr/
 frontend/.eslintcache
 
-# Hardhat (Smart Contracts)
-contracts/cache/
-contracts/artifacts/
-contracts/typechain/
-contracts/typechain-types/
-contracts/coverage/
-contracts/coverage.json
+# Hardhat (Smart Contracts): se regeneran con `npx hardhat compile`
+01_blockchain_smart_contracts/cache/
+01_blockchain_smart_contracts/artifacts/
+01_blockchain_smart_contracts/typechain/
+01_blockchain_smart_contracts/typechain-types/
 
 # Archivos de SO
 .DS_Store
