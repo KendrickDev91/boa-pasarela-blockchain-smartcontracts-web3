@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test:integracion": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "test:integracion": "node --env-file-if-exists=.env.test --test --test-concurrency=1 \"test/**/*.test.js\"",
     "test:carga": "npx artillery run test/load-test.yml --output test/reporte_carga.json && npx artillery report test/reporte_carga.json"
   },
   "dependencies": {

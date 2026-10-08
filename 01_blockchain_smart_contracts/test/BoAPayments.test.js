@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { time } = require("@nomicfoundation/hardhat-network-helpers");
 
-describe("BoAPayments - Pruebas unitarias (Tabla 23)", function () {
+describe("BoAPayments - Pruebas unitarias (Tabla 22)", function () {
     let boaPayments, mockUSDT;
     let owner, recaudadora, operador, pasajero, atacante;
 

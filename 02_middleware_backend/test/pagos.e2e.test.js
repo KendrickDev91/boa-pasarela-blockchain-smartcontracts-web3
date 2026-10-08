@@ -5,9 +5,10 @@
  * Requisitos (ver README de pruebas):
  *   1. npx hardhat node                                   (en 01_blockchain_smart_contracts)
  *   2. npx hardhat run scripts/deploy.js --network localhost
- *   3. PostgreSQL con el esquema de 04_infraestructura_db/init.sql
+ *   3. Base de datos DEDICADA a pruebas (su nombre debe contener "test", p. ej. bova_payments_test)
+ *      con el esquema de 04_infraestructura_db/init.sql: las pruebas vacían sus tablas
  *   4. .env de pruebas con CONTRACT_ADDRESS, TOKEN_ADDRESS, DB_* y ADMIN_PASSWORD
- * Ejecución:  node --test test/
+ * Ejecución:  npm run test:integracion   (fija DB_NAME=bova_payments_test)
  */
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -49,6 +50,10 @@ async function pagar(cotizacion) {
 }
 
 before(async () => {
+    // Las pruebas vacían las tablas: solo se ejecutan sobre una base dedicada (su nombre debe contener "test")
+    if (!/test/i.test(process.env.DB_NAME || '')) {
+        throw new Error(`Base de datos "${process.env.DB_NAME}" protegida: ejecute las pruebas con DB_NAME=bova_payments_test`);
+    }
     await new Promise((r) => tcServer.listen(0, r));
     process.env.EXCHANGE_RATE_URL = `http://127.0.0.1:${tcServer.address().port}/ExchangeRate`;
     process.env.CONFIRMATIONS = '0';
