@@ -15,6 +15,7 @@ import { ElectronicBankExpand, MobileWalletExpand, CardExpand, QRExpand } from '
 import { CryptoIcon } from '../payment/components.jsx';
 import CryptoCheckoutFlow from '../payment/CryptoFlow.jsx';
 import { getDestino, precioBaseRuta } from '../data/destinations.js';
+import { pnrDeLaUrl, cargarReservaPendiente } from './reservaQR.js';
 
 // Formatea ISO date (YYYY-MM-DD) → "Sáb 30 May"
 const fmtFecha = (iso) => {
@@ -68,6 +69,21 @@ export default function BookingApp() {
   // Reserva real creada en el backend al llegar al paso de pago. No persistir en session para forzar reconexión
   const [reserva, setReserva] = useState(null);
   const [backendOk, setBackendOk] = useState(false);
+  // Reserva abierta desde el QR (?pnr=): su tarifa ya está registrada on-chain y no se recalcula
+  const [reservaQR, setReservaQR] = useState(null);
+  const [avisoQR, setAvisoQR] = useState('');
+
+  useEffect(() => {
+    const pnr = pnrDeLaUrl();
+    if (!pnr) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    cargarReservaPendiente(pnr)
+      .then((r) => {
+        setReserva(r); setReservaQR(r); setBackendOk(true);
+        setExpanded('crypto'); setScreen('wizard'); setStep(5);
+      })
+      .catch((e) => { setAvisoQR(e.message); setScreen('home'); setStep(0); });
+  }, []);
 
   // El total solo se calcula cuando hay vuelo seleccionado (evita mostrar
   // un precio "fantasma" en el paso 0 antes de elegir nada).
@@ -75,7 +91,7 @@ export default function BookingApp() {
   const baseRet = tripType === 'roundtrip' && returnFlight ? returnFlight.price : 0;
   const extrasTotal = (extras.baggage ? 120 : 0) + (extras.seat ? 45 : 0) + (extras.meal ? 65 : 0) + (extras.insure ? 80 : 0);
   const taxes = outbound ? 87 : 0;
-  const total = baseOut + baseRet + extrasTotal + taxes;
+  const total = reservaQR ? reservaQR.montoBob : baseOut + baseRet + extrasTotal + taxes;
   const TASA = 10.00; // BOB por USD/USDT (Ajustado a 10 para resguardar valor)
   const totalUSDT = +(total / TASA).toFixed(2);
 
@@ -148,6 +164,7 @@ export default function BookingApp() {
     setOutbound(null);
     setReturnFlight(null);
     setReserva(null);
+    setReservaQR(null); setAvisoQR('');
     setScreen('wizard');
     setStep(0);
   };
@@ -156,6 +173,7 @@ export default function BookingApp() {
     setOutbound(null);
     setReturnFlight(null);
     setReserva(null);
+    setReservaQR(null);
     setScreen('home');
     setStep(0);
   };
@@ -166,6 +184,11 @@ export default function BookingApp() {
     return (
       <div>
         <Header/>
+        {avisoQR && (
+          <div role="alert" style={{ margin: '12px auto', maxWidth: 960, padding: '10px 14px', borderRadius: 6, background: '#FFF4E5', color: '#8A4B00', fontSize: 13 }}>
+            {avisoQR}
+          </div>
+        )}
         <HeroSearch onSearch={(params) => startWizard(params)}/>
         <OfferCards onCardClick={() => startWizard({ trip: 'roundtrip' })}/>
         <Footer/>
