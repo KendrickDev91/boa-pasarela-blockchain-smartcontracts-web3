@@ -1,4 +1,4 @@
-// CF-12 a CF-16 y CF-20: flujo de pago con doble firma en la billetera (approve + pagarBoleto)
+// CF-12 a CF-16, CF-20 y CF-21: flujo de pago con doble firma en la billetera (approve + pagarBoleto)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ethers } from 'ethers';
@@ -32,14 +32,19 @@ const CUENTA = '0x70997970C51812dc3A010C7d01b50e0d17dc79C8';
 const COTIZACION = { montoUnidades: '135060000', montoStablecoin: '135.06', tipoCambio: 6.91, contrato: BOA_PAYMENTS_ADDRESS };
 
 // Billetera simulada con la interfaz sendAsync de MetaMask
-function billetera({ chainId = '0x7a69', switchFalla = false, otroNodo = false } = {}) {
+// sinPermisoEnRed: como MetaMask Mobile, la cuenta no queda autorizada en la red nueva hasta wallet_requestPermissions
+function billetera({ chainId = '0x7a69', switchFalla = false, otroNodo = false, sinPermisoEnRed = false } = {}) {
   const llamadas = [];
   let n = 0;
+  let permiso = !sinPermisoEnRed;
   window.ethereum = {
     isMetaMask: true,
     sendAsync: ({ method, params }, cb) => {
       llamadas.push({ method, params });
       if (method === 'eth_requestAccounts') return cb(null, { result: [CUENTA] });
+      if (method === 'eth_accounts') return cb(null, { result: permiso ? [CUENTA] : [] });
+      if (method === 'wallet_requestPermissions') { permiso = true; return cb(null, { result: [{ parentCapability: 'eth_accounts' }] }); }
+      if (method === 'eth_sendTransaction' && !permiso) return cb({ code: -32602, message: 'Invalid parameters: must provide an Ethereum address.' });
       if (method === 'eth_chainId') return cb(null, { result: chainId });
       if (method === 'wallet_switchEthereumChain' && switchFalla) {
         return cb({ code: 4902, message: 'Unrecognized chain ID' });
@@ -155,5 +160,18 @@ describe('Pago con doble firma en la billetera (payment/CryptoFlow.jsx)', () => 
     expect(envios).toHaveLength(2);
     envios.forEach((e) => expect(e.params[0].from).toBe(CUENTA));
     ua.mockRestore();
+  });
+
+  it('CF-21 pide de nuevo el permiso de la cuenta en la red de pruebas antes de firmar', async () => {
+    servidor();
+    const llamadas = billetera({ sinPermisoEnRed: true });
+    fireEvent.click(await abrirCheckout());
+
+    await screen.findByText('Verificando pago');
+    const metodos = llamadas.map((l) => l.method);
+    const permiso = metodos.indexOf('wallet_requestPermissions');
+    expect(permiso).toBeGreaterThan(-1);
+    expect(permiso).toBeLessThan(metodos.indexOf('eth_sendTransaction'));
+    expect(metodos.filter((m) => m === 'eth_sendTransaction')).toHaveLength(2);
   });
 });

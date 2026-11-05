@@ -242,6 +242,7 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
     }
 
     setError(''); setBusy(true);
+    let paso = 'Conexión con la billetera';
     try {
       setWalletMsg('Conectando con la billetera oficial');
       
@@ -301,6 +302,20 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
         }
       }
 
+      // 3b. MetaMask Mobile autoriza las cuentas por red: con la billetera ya en la red del contrato se confirma
+      //     que la cuenta esté autorizada en ella; si no, eth_sendTransaction responde "must provide an Ethereum address"
+      const autorizada = async () => {
+        const cuentas = await callMetaMask(ethProvider, 'eth_accounts').catch(() => null);
+        return !Array.isArray(cuentas) || cuentas.some((a) => String(a).toLowerCase() === userAddress.toLowerCase());
+      };
+      if (!(await autorizada())) {
+        await callMetaMask(ethProvider, 'eth_requestAccounts').catch(() => null);
+        if (!(await autorizada())) {
+          await callMetaMask(ethProvider, 'wallet_requestPermissions', [{ eth_accounts: {} }]);
+          if (!(await autorizada())) throw new Error('La billetera no autorizó la cuenta en la red de pruebas. En MetaMask, desconecte este sitio y vuelva a pagar.');
+        }
+      }
+
       // 4. Chequeo de saldo (solo lectura)
       const usdtContract = new ethers.Contract(USDT_TOKEN_ADDRESS, ERC20_ABI, readProvider);
       const sinGas = (await readProvider.getBalance(userAddress)) === 0n;
@@ -325,14 +340,14 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
       };
 
       // 5. Firma 1/2: autorización de gasto (approve) por el importe exacto
-      setWalletMsg('1/2 Autorizando el gasto de USDT');
+      paso = 'Firma 1/2'; setWalletMsg('1/2 Autorizando el gasto de USDT');
       const ifaceUSDT = new ethers.Interface(ERC20_ABI);
       const dataApprove = ifaceUSDT.encodeFunctionData('approve', [ADDRESS, montoUnidades]);
       const hashApprove = await callMetaMask(ethProvider, 'eth_sendTransaction', [{ from: userAddress, to: USDT_TOKEN_ADDRESS, data: dataApprove }]);
       await esperarRecibo(hashApprove);
 
       // 6. Firma 2/2: pago (el contrato toma el importe de la tarifa registrada)
-      setWalletMsg('2/2 Confirmando el pago en la red');
+      paso = 'Firma 2/2'; setWalletMsg('2/2 Confirmando el pago en la red');
       const ifaceBoA = new ethers.Interface(BOA_PAYMENTS_ABI);
       const dataPago = ifaceBoA.encodeFunctionData('pagarBoleto', [pnr]);
       const hashPago = await callMetaMask(ethProvider, 'eth_sendTransaction', [{ from: userAddress, to: ADDRESS, data: dataPago }]);
@@ -342,7 +357,9 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
     } catch (e) {
       console.error("Operación detenida:", e);
       setWalletMsg(''); setBusy(false);
-      setError(e?.message || 'Operación detenida en la billetera');
+      // Los errores propios de la billetera indican el paso en que se detuvo la operación
+      const msg = e?.message || 'Operación detenida en la billetera';
+      setError(typeof e?.code === 'number' ? `${paso}: ${msg} (código ${e.code})` : msg);
     }
   };
 
