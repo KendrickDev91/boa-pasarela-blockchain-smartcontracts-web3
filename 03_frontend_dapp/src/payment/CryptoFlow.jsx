@@ -11,6 +11,7 @@ import { BOA_PAYMENTS_ADDRESS, BOA_PAYMENTS_ABI, USDT_TOKEN_ADDRESS, ERC20_ABI, 
 import { API_BASE } from '../services/config.js';
 
 const tieneMetaMask = () => !!window.ethereum;
+const esNavegadorMovil = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
 const explorerTxUrl = (chainId, txHash) => txHash ? `/explorer/tx/${txHash}` : null;
 
 // =========================================================================
@@ -213,10 +214,15 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
 
   // Función auxiliar para esquivar completamente el bug de Promesas Proxy de MetaMask/Vite
   // utilizando el método basado en callbacks (sendAsync) que no devuelve Promesas corruptas.
+  // En MetaMask Mobile se usa request (EIP-1193): su sendAsync heredado no entrega bien los parámetros de eth_sendTransaction.
   const callMetaMask = (provider, method, params = []) => {
     return new Promise((resolve, reject) => {
+      if (esNavegadorMovil() && typeof provider.request === 'function') {
+        provider.request({ method, params }).then(resolve).catch(reject);
+        return;
+      }
       try {
-        provider.sendAsync({ method, params }, (err, res) => {
+        provider.sendAsync({ jsonrpc: '2.0', id: Date.now(), method, params }, (err, res) => {
           if (err) return reject(err);
           if (res && res.error) return reject(res.error);
           resolve(res ? res.result : null);
@@ -247,7 +253,10 @@ const CryptoCheckout = ({ symbol, totalBob = 933, pnr, direccionPago, montoUSDT,
       // 1. Pedir cuentas usando callbacks
       const accounts = await callMetaMask(ethProvider, 'eth_requestAccounts');
       if (!accounts || accounts.length === 0) throw new Error("Se requiere seleccionar una cuenta para operar");
-      const userAddress = accounts[0];
+      // La billetera exige en "from" una dirección hexadecimal válida de la cuenta conectada
+      const cuenta = typeof accounts[0] === 'string' ? accounts[0] : accounts[0]?.address;
+      if (!cuenta || !ethers.isAddress(cuenta)) throw new Error('La billetera no devolvió una cuenta válida; vuelva a conectarla');
+      const userAddress = ethers.getAddress(cuenta);
       
       // Importe exacto registrado on-chain para este PNR (unidades mínimas, 6 decimales)
       const montoUnidades = BigInt(cotizacion.montoUnidades);

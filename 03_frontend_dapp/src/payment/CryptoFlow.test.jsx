@@ -1,4 +1,4 @@
-// CF-12 a CF-16: flujo de pago con doble firma en la billetera (approve + pagarBoleto)
+// CF-12 a CF-16 y CF-20: flujo de pago con doble firma en la billetera (approve + pagarBoleto)
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ethers } from 'ethers';
@@ -140,5 +140,20 @@ describe('Pago con doble firma en la billetera (payment/CryptoFlow.jsx)', () => 
     expect(await screen.findByText(/conectada a otro nodo/)).toBeInTheDocument();
     expect(llamadas.some((l) => l.method === 'wallet_addEthereumChain')).toBe(true);
     expect(llamadas.some((l) => l.method === 'eth_sendTransaction')).toBe(false);
+  });
+
+  it('CF-20 en MetaMask Mobile firma por request (EIP-1193) con la cuenta conectada en "from"', async () => {
+    servidor();
+    billetera();
+    window.ethereum.request = vi.fn(({ method, params }) => new Promise((ok, mal) =>
+      window.ethereum.sendAsync({ method, params }, (err, res) => (err ? mal(err) : ok(res.result)))));
+    const ua = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (Linux; Android 14) Mobile MetaMaskMobile');
+    fireEvent.click(await abrirCheckout());
+
+    await screen.findByText('Verificando pago');
+    const envios = window.ethereum.request.mock.calls.map(([p]) => p).filter((p) => p.method === 'eth_sendTransaction');
+    expect(envios).toHaveLength(2);
+    envios.forEach((e) => expect(e.params[0].from).toBe(CUENTA));
+    ua.mockRestore();
   });
 });
